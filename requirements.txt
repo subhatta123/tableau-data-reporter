@@ -17,7 +17,7 @@ python-dotenv>=1.0.0  # For environment variables
 numpy>=1.24.0  # For numerical analysis
 plotly>=5.13.0  # For interactive visualizations
 scikit-learn>=1.4.0  # For advanced analytics
-openai==0.28.0  # Using older stable version
+ # Using older stable version
 --extra-index-url https://jllllll.github.io/llama-cpp-python-wheels/cpu/
 llama-cpp-python==0.2.23
 reportlab==4.0.7  # For PDF generation (fixed version)
