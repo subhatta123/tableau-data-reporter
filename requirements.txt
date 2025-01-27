@@ -1,7 +1,5 @@
+streamlit==1.31.0
 pandas==2.1.4
-
-
-
 tableau-api-lib==0.1.22
 python-dotenv==1.0.0
 openai==1.3.5
@@ -11,14 +9,12 @@ requests>=2.31.0
 sqlalchemy>=2.0.0
 xmltodict>=0.13.0  # For XML parsing
 tableauserverclient>=0.25.0  # For Tableau Server Client
-streamlit>=1.32.0  # For UI
-python-dotenv>=1.0.0  # For environment variables
 numpy>=1.24.0  # For numerical analysis
 plotly>=5.13.0  # For interactive visualizations
 scikit-learn>=1.4.0  # For advanced analytics
- # Using older stable version
 --extra-index-url https://jllllll.github.io/llama-cpp-python-wheels/cpu/
 llama-cpp-python==0.2.23
 reportlab==4.0.7  # For PDF generation (fixed version)
 APScheduler==3.10.4  # For job scheduling
-uuid>=1.30  # For generating unique IDs 
+uuid>=1.30  # For generating unique IDs
+gunicorn==21.2.0  # For production server 

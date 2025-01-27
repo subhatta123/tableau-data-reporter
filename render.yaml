@@ -3,13 +3,13 @@ services:
     name: tableau-data-reporter
     env: python
     plan: free
-    buildCommand: |
-      chmod +x start.sh
-      pip install -r requirements.txt
-    startCommand: ./start.sh
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --log-file -
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: OPENAI_API_KEY
         sync: false
+      - key: PORT
+        value: 8501
     autoDeploy: true 
