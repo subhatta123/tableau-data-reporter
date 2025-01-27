@@ -3,8 +3,10 @@ services:
     name: tableau-data-reporter
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run tableau_streamlit_app.py --server.address=0.0.0.0 --server.port=$PORT
+    buildCommand: |
+      chmod +x start.sh
+      pip install -r requirements.txt
+    startCommand: ./start.sh
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
