@@ -16,5 +16,4 @@ scikit-learn>=1.4.0  # For advanced analytics
 llama-cpp-python==0.2.23
 reportlab==4.0.7  # For PDF generation (fixed version)
 APScheduler==3.10.4  # For job scheduling
-uuid>=1.30  # For generating unique IDs
-gunicorn==21.2.0  # For production server 
+uuid>=1.30  # For generating unique IDs 
