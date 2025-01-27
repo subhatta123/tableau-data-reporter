@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:latest
+    container_name: tableau_data_db
+    environment:
+      POSTGRES_USER: tableau_user
+      POSTGRES_PASSWORD: tableau_pass
+      POSTGRES_DB: tableau_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tableau_user -d tableau_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data: 
