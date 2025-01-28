@@ -413,6 +413,7 @@ def show_schedule_page(datasets=None):
                 col1, col2 = st.columns(2)
                 
                 with col1:
+                    schedule_config = {}
                     if schedule_type == "One-time":
                         date = st.date_input("Select Date")
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
@@ -420,16 +421,16 @@ def show_schedule_page(datasets=None):
                         schedule_config = {
                             'type': 'one-time',
                             'date': date.strftime("%Y-%m-%d"),
-                            'hour': hour,
-                            'minute': minute
+                            'hour': int(hour),
+                            'minute': int(minute)
                         }
                     elif schedule_type == "Daily":
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
                         minute = st.number_input("Minute", 0, 59, 0)
                         schedule_config = {
                             'type': 'daily',
-                            'hour': hour,
-                            'minute': minute
+                            'hour': int(hour),
+                            'minute': int(minute)
                         }
                     elif schedule_type == "Weekly":
                         weekday = st.selectbox("Day of Week", 
@@ -439,8 +440,8 @@ def show_schedule_page(datasets=None):
                         schedule_config = {
                             'type': 'weekly',
                             'day': ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].index(weekday.lower()),
-                            'hour': hour,
-                            'minute': minute
+                            'hour': int(hour),
+                            'minute': int(minute)
                         }
                     elif schedule_type == "Monthly":
                         day = st.number_input("Day of Month", 1, 31, 1)
@@ -448,9 +449,9 @@ def show_schedule_page(datasets=None):
                         minute = st.number_input("Minute", 0, 59, 0)
                         schedule_config = {
                             'type': 'monthly',
-                            'day': day,
-                            'hour': hour,
-                            'minute': minute
+                            'day': int(day),
+                            'hour': int(hour),
+                            'minute': int(minute)
                         }
 
                 with col2:
@@ -501,9 +502,14 @@ def show_schedule_page(datasets=None):
                         return
                     
                     try:
+                        # Validate schedule configuration
+                        if not schedule_config or 'type' not in schedule_config:
+                            st.error("Invalid schedule configuration")
+                            return
+                            
                         email_config = {
                             'smtp_server': smtp_server,
-                            'smtp_port': smtp_port,
+                            'smtp_port': int(smtp_port),
                             'sender_email': email_from,
                             'sender_password': email_password,
                             'recipients': [e.strip() for e in email_list.split('\n') if e.strip()],
@@ -517,16 +523,20 @@ def show_schedule_page(datasets=None):
                             schedule_config
                         )
                         
-                        st.success(f"""
-                        Report scheduled successfully! 🎉
-                        Schedule: {schedule_type}
-                        Next run: {hour:02d}:{minute:02d}
-                        """)
-                        time.sleep(2)
-                        st.rerun()
+                        if job_id:
+                            st.success(f"""
+                            Report scheduled successfully! 🎉
+                            Schedule: {schedule_type}
+                            Next run: {hour:02d}:{minute:02d}
+                            """)
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("Failed to create schedule. Please check your configuration.")
                         
                     except Exception as e:
                         st.error(f"Failed to schedule report: {str(e)}")
+                        print(f"Schedule error details: {str(e)}")  # Debug print
 
 def get_row_count(dataset_name):
     """Get row count for a dataset"""
