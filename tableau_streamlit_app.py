@@ -553,9 +553,8 @@ def main():
     )
     
     # Store session in URL parameters to maintain state on refresh
-    params = st.experimental_get_query_params()
-    if 'session_id' in params:
-        session_id = params['session_id'][0]
+    if 'session_id' in st.query_params:
+        session_id = st.query_params['session_id']
         if 'user' not in st.session_state and session_id:
             # Try to restore session from database
             try:
@@ -593,7 +592,7 @@ def main():
                     VALUES (?, ?, datetime('now', '+24 hours'))
                 ''', (session_id, json.dumps(st.session_state.user)))
                 conn.commit()
-                st.experimental_set_query_params(session_id=session_id)
+                st.query_params['session_id'] = session_id
         except Exception as e:
             print(f"Session store error: {str(e)}")
     
