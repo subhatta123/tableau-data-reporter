@@ -14,12 +14,22 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+from pathlib import Path
+import uuid
 
 class ReportManager:
     def __init__(self):
+        """Initialize report manager"""
+        self.data_dir = Path("data")
+        self.data_dir.mkdir(exist_ok=True)
+        self.schedules_file = self.data_dir / "schedules.json"
+        if not self.schedules_file.exists():
+            self.save_schedules({})
+        
+        # Initialize scheduler
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
-        self.load_schedules()
+        self.load_saved_schedules()
     
     def generate_pdf(self, df, title):
         """Generate PDF report from DataFrame"""
@@ -96,153 +106,181 @@ class ReportManager:
         buffer.seek(0)
         return buffer
 
-    def schedule_report(self, dataset_name, email_config, schedule_config):
-        """Schedule a report for recurring delivery"""
-        # Validate email configuration
-        required_email_fields = ['smtp_server', 'smtp_port', 'sender_email', 
-                               'sender_password', 'recipients', 'format']
-        if not all(field in email_config for field in required_email_fields):
-            raise ValueError("Missing required email configuration fields")
-        
-        if not email_config['recipients']:
-            raise ValueError("No recipients specified")
-        
-        # Validate schedule configuration
-        if 'type' not in schedule_config:
-            raise ValueError("Schedule type not specified")
-        
-        if schedule_config['type'] not in ['daily', 'weekly', 'monthly']:
-            raise ValueError("Invalid schedule type")
-        
-        job_id = f"report_{dataset_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        # Create trigger based on schedule type
+    def schedule_report(self, dataset_name: str, email_config: dict, schedule_config: dict) -> str:
+        """Schedule a new report"""
         try:
-            if schedule_config['type'] == 'daily':
-                trigger = CronTrigger(
-                    hour=schedule_config.get('hour', 0),
-                    minute=schedule_config.get('minute', 0)
+            job_id = str(uuid.uuid4())
+            
+            # Validate schedule configuration
+            if 'type' not in schedule_config:
+                raise ValueError("Schedule type not specified")
+            
+            # Create the job based on schedule type
+            if schedule_config['type'] == 'one-time':
+                if 'date' not in schedule_config:
+                    raise ValueError("Date not specified for one-time schedule")
+                
+                # Parse date and time
+                schedule_date = datetime.strptime(
+                    f"{schedule_config['date']} {schedule_config['hour']:02d}:{schedule_config['minute']:02d}:00",
+                    "%Y-%m-%d %H:%M:%S"
                 )
+                
+                # Add job to scheduler
+                self.scheduler.add_job(
+                    func=self.send_report,
+                    trigger='date',
+                    run_date=schedule_date,
+                    args=[dataset_name, email_config],
+                    id=job_id,
+                    name=f"Report_{dataset_name}"
+                )
+            
+            elif schedule_config['type'] == 'daily':
+                self.scheduler.add_job(
+                    func=self.send_report,
+                    trigger='cron',
+                    hour=schedule_config['hour'],
+                    minute=schedule_config['minute'],
+                    args=[dataset_name, email_config],
+                    id=job_id,
+                    name=f"Report_{dataset_name}"
+                )
+            
             elif schedule_config['type'] == 'weekly':
-                trigger = CronTrigger(
-                    day_of_week=schedule_config.get('day', 0),
-                    hour=schedule_config.get('hour', 0),
-                    minute=schedule_config.get('minute', 0)
+                self.scheduler.add_job(
+                    func=self.send_report,
+                    trigger='cron',
+                    day_of_week=schedule_config['day'],
+                    hour=schedule_config['hour'],
+                    minute=schedule_config['minute'],
+                    args=[dataset_name, email_config],
+                    id=job_id,
+                    name=f"Report_{dataset_name}"
                 )
+            
             elif schedule_config['type'] == 'monthly':
-                trigger = CronTrigger(
-                    day=schedule_config.get('day', 1),
-                    hour=schedule_config.get('hour', 0),
-                    minute=schedule_config.get('minute', 0)
+                self.scheduler.add_job(
+                    func=self.send_report,
+                    trigger='cron',
+                    day=schedule_config['day'],
+                    hour=schedule_config['hour'],
+                    minute=schedule_config['minute'],
+                    args=[dataset_name, email_config],
+                    id=job_id,
+                    name=f"Report_{dataset_name}"
                 )
             
-            # Add job to scheduler
-            self.scheduler.add_job(
-                self.send_scheduled_report,
-                trigger=trigger,
-                args=[dataset_name, email_config],
-                id=job_id,
-                replace_existing=True
-            )
+            else:
+                raise ValueError(f"Invalid schedule type: {schedule_config['type']}")
             
-            # Save schedule configuration
-            self.save_schedule(job_id, dataset_name, email_config, schedule_config)
+            # Save schedule to file
+            schedules = self.load_schedules()
+            schedules[job_id] = {
+                'dataset_name': dataset_name,
+                'email_config': email_config,
+                'schedule_config': schedule_config,
+                'created_at': datetime.now().isoformat()
+            }
+            self.save_schedules(schedules)
             
+            print(f"Successfully scheduled report with ID: {job_id}")
             return job_id
             
         except Exception as e:
             print(f"Failed to schedule report: {str(e)}")
-            raise
-
-    def send_scheduled_report(self, dataset_name, email_config):
+            return None
+    
+    def send_report(self, dataset_name: str, email_config: dict):
         """Send scheduled report"""
         try:
             # Load dataset
-            with sqlite3.connect("data/tableau_data.db") as conn:
-                df = pd.read_sql(f"SELECT * FROM '{dataset_name}'", conn)
+            with sqlite3.connect('data/tableau_data.db') as conn:
+                df = pd.read_sql_query(f"SELECT * FROM '{dataset_name}'", conn)
             
-            # Generate report
-            if email_config['format'] == 'PDF':
-                buffer = self.generate_pdf(df, f"Report: {dataset_name}")
-                report_data = buffer.getvalue()
-                mime_type = 'application/pdf'
-                file_ext = 'pdf'
+            if df.empty:
+                print(f"No data found in dataset: {dataset_name}")
+                return
+            
+            # Create email
+            msg = MIMEMultipart()
+            msg['From'] = email_config['sender_email']
+            msg['To'] = ', '.join(email_config['recipients'])
+            msg['Subject'] = f"Scheduled Report: {dataset_name}"
+            
+            # Add email body
+            body = f"""
+            Please find attached the scheduled report for {dataset_name}.
+            Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Attach report file
+            if email_config['format'].upper() == 'CSV':
+                # Save DataFrame to CSV
+                csv_buffer = io.StringIO()
+                df.to_csv(csv_buffer, index=False)
+                attachment = MIMEText(csv_buffer.getvalue())
+                attachment.add_header('Content-Disposition', 'attachment', filename=f"{dataset_name}.csv")
+                msg.attach(attachment)
             else:
-                buffer = io.StringIO()
-                df.to_csv(buffer, index=False)
-                report_data = buffer.getvalue()
-                mime_type = 'text/csv'
-                file_ext = 'csv'
+                # PDF format (placeholder for future implementation)
+                pass
             
             # Send email
-            for recipient in email_config['recipients']:
-                msg = MIMEMultipart()
-                msg['Subject'] = f'Scheduled Report: {dataset_name}'
-                msg['From'] = email_config['sender_email']
-                msg['To'] = recipient
-                
-                # Add body
-                body = f"""
-                Automated Report: {dataset_name}
-                Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-                
-                Please find the attached report.
-                """
-                msg.attach(MIMEText(body, 'plain'))
-                
-                # Add attachment
-                attachment = MIMEApplication(report_data)
-                attachment['Content-Disposition'] = f'attachment; filename="{dataset_name}_{datetime.now().strftime("%Y%m%d")}_{email_config["format"].lower()}"'
-                msg.attach(attachment)
-                
-                # Send email
-                with smtplib.SMTP(email_config['smtp_server'], email_config['smtp_port']) as server:
-                    server.starttls()
-                    server.login(email_config['sender_email'], email_config['sender_password'])
-                    server.send_message(msg)
+            with smtplib.SMTP(email_config['smtp_server'], email_config['smtp_port']) as server:
+                server.starttls()
+                server.login(email_config['sender_email'], email_config['sender_password'])
+                server.send_message(msg)
             
-            print(f"Successfully sent scheduled report for {dataset_name}")
+            print(f"Report sent successfully for dataset: {dataset_name}")
             
         except Exception as e:
-            print(f"Failed to send scheduled report: {str(e)}")
-            # Log error or handle it appropriately
-
-    def save_schedule(self, job_id, dataset_name, email_config, schedule_config):
-        """Save schedule configuration to file"""
-        schedule_data = {
-            'job_id': job_id,
-            'dataset_name': dataset_name,
-            'email_config': email_config,
-            'schedule_config': schedule_config
-        }
-        
-        schedules = self.load_schedules()
-        schedules[job_id] = schedule_data
-        
-        with open('schedules.json', 'w') as f:
-            json.dump(schedules, f)
-
-    def load_schedules(self):
-        """Load saved schedules"""
-        try:
-            with open('schedules.json', 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-
-    def get_active_schedules(self):
-        """Get list of active schedules"""
-        return self.load_schedules()
-
-    def remove_schedule(self, job_id):
+            print(f"Failed to send report: {str(e)}")
+    
+    def remove_schedule(self, job_id: str) -> bool:
         """Remove a scheduled report"""
         try:
+            # Remove from scheduler
             self.scheduler.remove_job(job_id)
+            
+            # Remove from saved schedules
             schedules = self.load_schedules()
             if job_id in schedules:
                 del schedules[job_id]
-                with open('schedules.json', 'w') as f:
-                    json.dump(schedules, f)
+                self.save_schedules(schedules)
+            
             return True
+        except Exception as e:
+            print(f"Failed to remove schedule: {str(e)}")
+            return False
+    
+    def load_schedules(self) -> dict:
+        """Load saved schedules"""
+        try:
+            with open(self.schedules_file, 'r') as f:
+                return json.load(f)
         except:
-            return False 
+            return {}
+    
+    def save_schedules(self, schedules: dict):
+        """Save schedules to file"""
+        with open(self.schedules_file, 'w') as f:
+            json.dump(schedules, f)
+    
+    def load_saved_schedules(self):
+        """Load saved schedules into scheduler"""
+        schedules = self.load_schedules()
+        for job_id, schedule in schedules.items():
+            try:
+                self.schedule_report(
+                    schedule['dataset_name'],
+                    schedule['email_config'],
+                    schedule['schedule_config']
+                )
+            except Exception as e:
+                print(f"Failed to load schedule {job_id}: {str(e)}")
+    
+    def get_active_schedules(self) -> dict:
+        """Get all active schedules"""
+        return self.load_schedules() 
