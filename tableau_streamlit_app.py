@@ -709,8 +709,20 @@ def show_user_page():
             show_help()
         st.markdown("---")
         show_saved_datasets()
+        
+        # Add Schedule Reports button
+        st.markdown("---")
+        if st.button("📅 Schedule Reports"):
+            st.session_state.show_schedule_page = True
+            st.rerun()
+            
         st.markdown("---")
         show_logout_button()
+    
+    # Show schedule page if selected
+    if st.session_state.get('show_schedule_page', False):
+        show_schedule_page()
+        return
     
     # Main content area
     if not st.session_state.authenticated:
