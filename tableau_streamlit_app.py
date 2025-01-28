@@ -586,15 +586,25 @@ def main():
                         is_active INTEGER DEFAULT 1
                     )
                 ''')
+                # Convert user data to JSON string, ensuring all values are serializable
+                user_data = {
+                    'id': st.session_state.user['id'],
+                    'username': st.session_state.user['username'],
+                    'role': st.session_state.user['role'],
+                    'organization_id': st.session_state.user['organization_id'],
+                    'organization_name': st.session_state.user.get('organization_name', '')
+                }
                 # Store session with 24-hour expiration
                 cursor.execute('''
                     INSERT OR REPLACE INTO sessions (session_id, user_data, expires)
                     VALUES (?, ?, datetime('now', '+24 hours'))
-                ''', (session_id, json.dumps(st.session_state.user)))
+                ''', (session_id, json.dumps(user_data)))
                 conn.commit()
                 st.query_params['session_id'] = session_id
         except Exception as e:
             print(f"Session store error: {str(e)}")
+            # Log the actual data for debugging
+            print("User data:", st.session_state.user)
     
     # Show login page if not logged in
     if not st.session_state.user:
@@ -707,15 +717,26 @@ def load_dataset(table_name):
     """Load dataset from SQLite database filtered by organization"""
     try:
         with sqlite3.connect(DatabaseManager().db_path) as conn:
-            # Only load data for the user's organization
-            query = f"""
-            SELECT * FROM '{table_name}'
-            WHERE Organization_ID = ?
-            """
-            df = pd.read_sql_query(query, conn, params=[st.session_state.user['organization_id']])
+            cursor = conn.cursor()
+            
+            # Check if Organization_ID column exists
+            cursor.execute(f"PRAGMA table_info('{table_name}')")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'Organization_ID' in columns:
+                # Only load data for the user's organization
+                query = f"""
+                SELECT * FROM '{table_name}'
+                WHERE Organization_ID = ?
+                """
+                df = pd.read_sql_query(query, conn, params=[st.session_state.user['organization_id']])
+            else:
+                # For legacy tables without Organization_ID, load all data
+                query = f"SELECT * FROM '{table_name}'"
+                df = pd.read_sql_query(query, conn)
             
             if df.empty:
-                st.error(f"No data found in dataset '{table_name}' for your organization")
+                st.error(f"No data found in dataset '{table_name}'")
                 return None
             print(f"Loaded dataset shape: {df.shape}")  # Debug print
             return df
@@ -727,22 +748,32 @@ def get_saved_datasets():
     """Get list of saved datasets filtered by organization"""
     try:
         with sqlite3.connect(DatabaseManager().db_path) as conn:
+            cursor = conn.cursor()
             # Get all tables
             tables = DatabaseManager().list_tables(include_internal=False)
-            
-            # Filter tables by checking if they contain data for the user's organization
-            org_id = st.session_state.user['organization_id']
             filtered_tables = []
             
             for table in tables:
-                # Check if table has data for this organization
-                query = f"""
-                SELECT COUNT(*) FROM '{table}' 
-                WHERE Organization_ID = ?
-                """
-                count = pd.read_sql_query(query, conn, params=[org_id]).iloc[0, 0]
-                if count > 0:
-                    filtered_tables.append(table)
+                try:
+                    # Check if Organization_ID column exists
+                    cursor.execute(f"PRAGMA table_info('{table}')")
+                    columns = [col[1] for col in cursor.fetchall()]
+                    
+                    if 'Organization_ID' in columns:
+                        # Check if table has data for this organization
+                        query = f"""
+                        SELECT COUNT(*) FROM '{table}' 
+                        WHERE Organization_ID = ?
+                        """
+                        count = pd.read_sql_query(query, conn, params=[st.session_state.user['organization_id']])
+                        if count.iloc[0, 0] > 0:
+                            filtered_tables.append(table)
+                    else:
+                        # For legacy tables without Organization_ID, show to all users
+                        filtered_tables.append(table)
+                except Exception as table_error:
+                    print(f"Error checking table {table}: {str(table_error)}")
+                    continue
             
             return filtered_tables
     except Exception as e:
