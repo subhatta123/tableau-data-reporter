@@ -264,6 +264,8 @@ def initialize_session_state():
         st.session_state.current_dashboard_id = None
     if 'show_qa' not in st.session_state:
         st.session_state.show_qa = False
+    if 'show_schedule_page' not in st.session_state:
+        st.session_state.show_schedule_page = False
 
 def authenticate(server_url, auth_method, credentials):
     """Handle authentication and store in session state"""
