@@ -337,7 +337,7 @@ def admin_login():
 
 def show_schedule_page(datasets=None):
     """Show schedule report page"""
-    st.title("�� Schedule Report")
+    st.title("Schedule Report")
     
     # Use the current dataset if one is selected
     selected_dataset = st.session_state.get('current_dataset')
@@ -369,7 +369,7 @@ def show_schedule_page(datasets=None):
                     )
                     email_from = st.text_input(
                         "Sender Email",
-                        value='tableaureporter@gmail.com',
+                        value='tableautoexcel@gmail.com',
                         placeholder="your-email@gmail.com"
                     )
                 
@@ -380,9 +380,9 @@ def show_schedule_page(datasets=None):
                     )
                     email_password = st.text_input(
                         "Email Password",
-                        value='tableaureporter',
+                        value='Tibco123!',
                         type="password",
-                        help="Default password: tableaureporter"
+                        help="Default password: Tibco123!"
                     )
             
             with recipients_tab:
