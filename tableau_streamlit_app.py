@@ -17,6 +17,8 @@ import time
 from report_manager import ReportManager
 from user_management import UserManager, show_login_page, show_profile_page, show_admin_page
 from dashboard_manager import DashboardManager, show_dashboard_page
+import json
+import uuid
 
 # Load environment variables at the very start
 load_dotenv()
@@ -335,16 +337,17 @@ def admin_login():
 
 def show_schedule_page(datasets=None):
     """Show schedule report page"""
-    st.title("📊 Schedule Report")
-
-    # Dataset selection at the top
-    st.subheader("📁 Select Dataset")
-    available_datasets = get_saved_datasets()
-    selected_dataset = st.selectbox(
-        "Choose a dataset to schedule",
-        available_datasets,
-        format_func=lambda x: f"{x} ({get_row_count(x)} rows)"
-    )
+    st.title("�� Schedule Report")
+    
+    # Use the current dataset if one is selected
+    selected_dataset = st.session_state.get('current_dataset')
+    if not selected_dataset:
+        available_datasets = get_saved_datasets()
+        selected_dataset = st.selectbox(
+            "Choose a dataset to schedule",
+            available_datasets,
+            format_func=lambda x: f"{x} ({get_row_count(x)} rows)"
+        )
 
     if selected_dataset:
         df = load_dataset(selected_dataset)
@@ -366,7 +369,7 @@ def show_schedule_page(datasets=None):
                     )
                     email_from = st.text_input(
                         "Sender Email",
-                        value=os.getenv('EMAIL_FROM', ''),
+                        value='tableaureporter@gmail.com',
                         placeholder="your-email@gmail.com"
                     )
                 
@@ -377,20 +380,10 @@ def show_schedule_page(datasets=None):
                     )
                     email_password = st.text_input(
                         "Email Password",
+                        value='tableaureporter',
                         type="password",
-                        help="For Gmail, use App Password"
+                        help="Default password: tableaureporter"
                     )
-                
-                with st.expander("Gmail Setup Instructions", expanded=False):
-                    st.markdown("""
-                    ### Setting up Gmail:
-                    1. Enable 2-Factor Authentication in your Google Account
-                    2. Generate an App Password:
-                        - Go to Google Account Settings
-                        - Search for 'App Passwords'
-                        - Select 'Mail' and your device
-                        - Use the generated password here
-                    """)
             
             with recipients_tab:
                 st.subheader("👥 Recipients")
@@ -418,7 +411,17 @@ def show_schedule_page(datasets=None):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    if schedule_type == "Daily":
+                    if schedule_type == "One-time":
+                        date = st.date_input("Select Date")
+                        hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
+                        minute = st.number_input("Minute", 0, 59, 0)
+                        schedule_config = {
+                            'type': 'one-time',
+                            'date': date.strftime("%Y-%m-%d"),
+                            'hour': hour,
+                            'minute': minute
+                        }
+                    elif schedule_type == "Daily":
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
                         minute = st.number_input("Minute", 0, 59, 0)
                         schedule_config = {
@@ -426,7 +429,6 @@ def show_schedule_page(datasets=None):
                             'hour': hour,
                             'minute': minute
                         }
-                    
                     elif schedule_type == "Weekly":
                         weekday = st.selectbox("Day of Week", 
                             ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
@@ -438,7 +440,6 @@ def show_schedule_page(datasets=None):
                             'hour': hour,
                             'minute': minute
                         }
-                    
                     elif schedule_type == "Monthly":
                         day = st.number_input("Day of Month", 1, 31, 1)
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
@@ -449,13 +450,14 @@ def show_schedule_page(datasets=None):
                             'hour': hour,
                             'minute': minute
                         }
-                    else:  # One-time
-                        schedule_config = {
-                            'type': 'one-time'
-                        }
 
                 with col2:
-                    if schedule_type != "One-time":
+                    if schedule_type == "One-time":
+                        st.info(f"""
+                        Report will be sent once on:
+                        {date.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}
+                        """)
+                    elif schedule_type != "One-time":
                         st.info(f"""
                         Report will be sent:
                         {'Daily' if schedule_type == 'Daily' else ''}
@@ -496,10 +498,6 @@ def show_schedule_page(datasets=None):
                         st.error("Please enter at least one recipient email")
                         return
                     
-                    if not all([smtp_server, smtp_port, email_from, email_password]):
-                        st.error("Please fill in all email settings")
-                        return
-                    
                     try:
                         email_config = {
                             'smtp_server': smtp_server,
@@ -522,6 +520,8 @@ def show_schedule_page(datasets=None):
                         Schedule: {schedule_type}
                         Next run: {hour:02d}:{minute:02d}
                         """)
+                        time.sleep(2)
+                        st.rerun()
                         
                     except Exception as e:
                         st.error(f"Failed to schedule report: {str(e)}")
@@ -542,6 +542,58 @@ def main():
     
     # Initialize all session state variables
     initialize_session_state()
+    
+    # Set page config
+    st.set_page_config(
+        page_title="Tableau Data Reporter",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # Store session in URL parameters to maintain state on refresh
+    params = st.experimental_get_query_params()
+    if 'session_id' in params:
+        session_id = params['session_id'][0]
+        if 'user' not in st.session_state and session_id:
+            # Try to restore session from database
+            try:
+                with sqlite3.connect('data/tableau_data.db') as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT user_data FROM sessions 
+                        WHERE session_id = ? AND expires > datetime('now')
+                    ''', (session_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        st.session_state.user = json.loads(result[0])
+            except Exception as e:
+                print(f"Session restore error: {str(e)}")
+    
+    # Create or update session if user is logged in
+    if st.session_state.user:
+        try:
+            session_id = str(uuid.uuid4())
+            with sqlite3.connect('data/tableau_data.db') as conn:
+                cursor = conn.cursor()
+                # Create sessions table if not exists
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS sessions (
+                        session_id TEXT PRIMARY KEY,
+                        user_data TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        expires TIMESTAMP,
+                        is_active INTEGER DEFAULT 1
+                    )
+                ''')
+                # Store session with 24-hour expiration
+                cursor.execute('''
+                    INSERT OR REPLACE INTO sessions (session_id, user_data, expires)
+                    VALUES (?, ?, datetime('now', '+24 hours'))
+                ''', (session_id, json.dumps(st.session_state.user)))
+                conn.commit()
+                st.experimental_set_query_params(session_id=session_id)
+        except Exception as e:
+            print(f"Session store error: {str(e)}")
     
     # Show login page if not logged in
     if not st.session_state.user:
@@ -571,13 +623,9 @@ def main():
             st.error("No dataset selected for dashboard")
             st.session_state.show_dashboard = False
             st.rerun()
-    
-    # Set page config
-    st.set_page_config(
-        page_title="Tableau Data Reporter",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+    elif st.session_state.show_schedule_page:
+        show_schedule_page()
+        return
     
     # Regular user view - show the main application interface
     show_user_page()
@@ -612,32 +660,45 @@ def show_saved_datasets():
     
     # Create columns for each dataset
     for dataset in datasets:
-        col1, col2, col3 = st.columns([3, 1, 1])
-        
-        with col1:
-            st.write(f"**{dataset}**")
-        
-        with col2:
-            if st.button("Automatic Dashboard", key=f"dashboard_{dataset}"):
-                # Load dataset and show dashboard
-                df = load_dataset(dataset)
-                if df is not None:
-                    dashboard_manager = DashboardManager()
-                    dashboard_id = dashboard_manager.create_dashboard(df)
-                    st.session_state.current_dataset = df
-                    st.session_state.current_dashboard_id = dashboard_id
-                    st.session_state.show_dashboard = True
+        with st.expander(f"📊 {dataset}", expanded=True):
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+            
+            with col1:
+                st.write(f"**{dataset}**")
+            
+            with col2:
+                if st.button("Automatic Dashboard", key=f"dashboard_{dataset}"):
+                    # Load dataset and show dashboard
+                    df = load_dataset(dataset)
+                    if df is not None:
+                        dashboard_manager = DashboardManager()
+                        dashboard_id = dashboard_manager.create_dashboard(df)
+                        st.session_state.current_dataset = df
+                        st.session_state.current_dashboard_id = dashboard_id
+                        st.session_state.show_dashboard = True
+                        st.rerun()
+            
+            with col3:
+                if st.button("Ask Questions", key=f"ask_{dataset}"):
+                    # Load dataset and set state for Q&A page
+                    df = load_dataset(dataset)
+                    if df is not None:
+                        st.session_state.current_dataset = df
+                        st.session_state.show_qa = True
+                        st.session_state.show_dashboard = False
+                        st.rerun()
+            
+            with col4:
+                if st.button("Schedule Report", key=f"schedule_{dataset}"):
+                    st.session_state.show_schedule_page = True
+                    st.session_state.current_dataset = dataset
                     st.rerun()
-        
-        with col3:
-            if st.button("Ask Questions", key=f"ask_{dataset}"):
-                # Load dataset and set state for Q&A page
-                df = load_dataset(dataset)
-                if df is not None:
-                    st.session_state.current_dataset = df
-                    st.session_state.show_qa = True
-                    st.session_state.show_dashboard = False
-                    st.rerun()
+            
+            # Show preview of the dataset
+            df_preview = load_dataset(dataset)
+            if df_preview is not None:
+                st.dataframe(df_preview.head(), use_container_width=True)
+                st.caption(f"Total rows: {len(df_preview)}")
         
         st.markdown("---")
 
