@@ -408,13 +408,13 @@ def show_schedule_page(datasets=None):
                     "Frequency",
                     ["One-time", "Daily", "Weekly", "Monthly"],
                     help="How often to send the report"
-                )
+                ).lower()  # Convert to lowercase for consistency
 
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     schedule_config = {}
-                    if schedule_type == "One-time":
+                    if schedule_type == "one-time":
                         date = st.date_input("Select Date")
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
                         minute = st.number_input("Minute", 0, 59, 0)
@@ -424,7 +424,7 @@ def show_schedule_page(datasets=None):
                             'hour': int(hour),
                             'minute': int(minute)
                         }
-                    elif schedule_type == "Daily":
+                    elif schedule_type == "daily":
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
                         minute = st.number_input("Minute", 0, 59, 0)
                         schedule_config = {
@@ -432,7 +432,7 @@ def show_schedule_page(datasets=None):
                             'hour': int(hour),
                             'minute': int(minute)
                         }
-                    elif schedule_type == "Weekly":
+                    elif schedule_type == "weekly":
                         weekday = st.selectbox("Day of Week", 
                             ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
@@ -443,7 +443,7 @@ def show_schedule_page(datasets=None):
                             'hour': int(hour),
                             'minute': int(minute)
                         }
-                    elif schedule_type == "Monthly":
+                    elif schedule_type == "monthly":
                         day = st.number_input("Day of Month", 1, 31, 1)
                         hour = st.number_input("Hour (24-hour format)", 0, 23, 8)
                         minute = st.number_input("Minute", 0, 59, 0)
@@ -455,17 +455,17 @@ def show_schedule_page(datasets=None):
                         }
 
                 with col2:
-                    if schedule_type == "One-time":
+                    if schedule_type == "one-time":
                         st.info(f"""
                         Report will be sent once on:
                         {date.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}
                         """)
-                    elif schedule_type != "One-time":
+                    else:
                         st.info(f"""
                         Report will be sent:
-                        {'Daily' if schedule_type == 'Daily' else ''}
-                        {'Every ' + weekday if schedule_type == 'Weekly' else ''}
-                        {'On day ' + str(day) + ' of each month' if schedule_type == 'Monthly' else ''}
+                        {'Daily' if schedule_type == 'daily' else ''}
+                        {'Every ' + weekday if schedule_type == 'weekly' else ''}
+                        {'On day ' + str(day) + ' of each month' if schedule_type == 'monthly' else ''}
                         at {hour:02d}:{minute:02d}
                         """)
                         
@@ -505,6 +505,7 @@ def show_schedule_page(datasets=None):
                         # Validate schedule configuration
                         if not schedule_config or 'type' not in schedule_config:
                             st.error("Invalid schedule configuration")
+                            print(f"Schedule config: {schedule_config}")  # Debug print
                             return
                             
                         email_config = {
@@ -517,6 +518,7 @@ def show_schedule_page(datasets=None):
                         }
                         
                         report_manager = ReportManager()
+                        print(f"Scheduling with config: {schedule_config}")  # Debug print
                         job_id = report_manager.schedule_report(
                             selected_dataset,
                             email_config,
@@ -537,6 +539,7 @@ def show_schedule_page(datasets=None):
                     except Exception as e:
                         st.error(f"Failed to schedule report: {str(e)}")
                         print(f"Schedule error details: {str(e)}")  # Debug print
+                        print(f"Schedule config: {schedule_config}")  # Debug print
 
 def get_row_count(dataset_name):
     """Get row count for a dataset"""
@@ -601,7 +604,7 @@ def main():
                     'id': st.session_state.user['id'],
                     'username': st.session_state.user['username'],
                     'role': st.session_state.user['role'],
-                    'organization_id': st.session_state.user['organization_id'],
+                    'organization_id': int.from_bytes(st.session_state.user['organization_id'], byteorder='little') if isinstance(st.session_state.user['organization_id'], bytes) else st.session_state.user['organization_id'],
                     'organization_name': st.session_state.user.get('organization_name', '')
                 }
                 # Store session with 24-hour expiration
@@ -613,7 +616,6 @@ def main():
                 st.query_params['session_id'] = session_id
         except Exception as e:
             print(f"Session store error: {str(e)}")
-            # Log the actual data for debugging
             print("User data:", st.session_state.user)
     
     # Show login page if not logged in
