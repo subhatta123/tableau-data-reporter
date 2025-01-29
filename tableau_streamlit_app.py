@@ -1086,17 +1086,21 @@ def show_qa_page():
                     # If it's a total/sum question, show summary cards
                     if any(word in user_question.lower() for word in ['total', 'sum']):
                         numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
-                        metrics_container = st.container()
-                        with metrics_container:
-                            cols = st.columns(len(numeric_cols))
-                            for i, col in enumerate(numeric_cols):
-                                with cols[i]:
-                                    total = df_clean[col].sum()
-                                    st.metric(
-                                        label=f"Total {col}",
-                                        value=f"${total:,.2f}",
-                                        help=f"Total sum of {col} across all records"
-                                    )
+                        if len(numeric_cols) > 0:  # Only create metrics if there are numeric columns
+                            metrics_container = st.container()
+                            with metrics_container:
+                                # Create a reasonable number of columns (max 4)
+                                num_cols = min(len(numeric_cols), 4)
+                                cols = st.columns(num_cols)
+                                for i, col in enumerate(numeric_cols):
+                                    col_idx = i % num_cols  # Wrap around to first column if more than num_cols
+                                    with cols[col_idx]:
+                                        total = df_clean[col].sum()
+                                        st.metric(
+                                            label=f"Total {col}",
+                                            value=f"${total:,.2f}",
+                                            help=f"Total sum of {col} across all records"
+                                        )
                 else:
                     st.warning("I couldn't find relevant insights for your question. Try rephrasing or ask something else.")
             except Exception as e:
