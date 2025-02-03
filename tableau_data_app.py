@@ -139,6 +139,16 @@ class TableauConnector:
         if not self.token:
             raise Exception("Not authenticated. Please sign in first.")
         
+        # Clean up the workbook ID
+        workbook_id = str(workbook_id).strip()
+        if workbook_id.startswith('{'):
+            try:
+                import ast
+                workbook_dict = ast.literal_eval(workbook_id)
+                workbook_id = workbook_dict.get('@id') or workbook_dict.get('id')
+            except:
+                pass
+        
         url = f"{self.server_url}/api/{self.api_version}/sites/{self.site_id}/workbooks/{workbook_id}/views"
         
         try:

@@ -326,13 +326,13 @@ def authenticate(server_url, auth_method, credentials):
     try:
         connector = TableauConnector(server_url)
         if auth_method == "Personal Access Token (PAT)":
-            success = connector.authenticate_with_pat(
+            success = connector.sign_in_with_pat(
                 credentials['pat_name'],
                 credentials['pat_secret'],
                 credentials.get('site_name', '')
             )
         else:
-            success = connector.authenticate(
+            success = connector.sign_in(
                 credentials['username'],
                 credentials['password'],
                 credentials.get('site_name', '')
@@ -353,7 +353,25 @@ def authenticate(server_url, auth_method, credentials):
 def load_views(workbook):
     """Load views for selected workbook"""
     try:
-        return st.session_state.connector.get_views(workbook)
+        # Extract workbook ID from the workbook dictionary
+        workbook_id = workbook.get('@id') or workbook.get('id')
+        if not workbook_id:
+            print("Could not find workbook ID")
+            return None
+            
+        # Clean up the workbook ID (remove any dictionary formatting)
+        workbook_id = str(workbook_id).strip()
+        if workbook_id.startswith('{'):
+            # If it's a string representation of a dict, try to get the ID
+            try:
+                import ast
+                workbook_dict = ast.literal_eval(workbook_id)
+                workbook_id = workbook_dict.get('@id') or workbook_dict.get('id')
+            except:
+                pass
+        
+        print(f"Loading views for workbook ID: {workbook_id}")
+        return st.session_state.connector.get_views(workbook_id)
     except Exception as e:
         print(f"Error loading views: {str(e)}")
         return None
@@ -1341,60 +1359,68 @@ def show_user_page():
     elif st.session_state.authenticated:
         st.title("Download Tableau Data")
         try:
+            # Load workbooks if not already loaded
             if not st.session_state.workbooks:
-                st.session_state.workbooks = st.session_state.connector.get_workbooks()
+                with st.spinner('Loading workbooks...'):
+                    st.session_state.workbooks = st.session_state.connector.get_workbooks()
             
             if st.session_state.workbooks:
                 # Workbook selection
-                workbook_names = [wb.get('@name') or wb.get('name') for wb in st.session_state.workbooks]
-                selected_wb_name = st.selectbox(
-                    "Select Workbook",
-                    workbook_names,
-                    key='workbook_selector'
-                )
-                
-                # Find selected workbook
-                selected_workbook = next(
-                    wb for wb in st.session_state.workbooks 
-                    if (wb.get('@name') or wb.get('name')) == selected_wb_name
-                )
-                
-                # Load views if workbook changed
-                if (not st.session_state.selected_workbook or 
-                    selected_workbook != st.session_state.selected_workbook):
-                    load_views(selected_workbook)
-                
-                # View selection
-                if st.session_state.views:
-                    view_names = [view.get('@name') or view.get('name') for view in st.session_state.views]
-                    selected_views = st.multiselect("Select Views", view_names)
+                workbook_names = [wb.get('@name', '') or wb.get('name', '') for wb in st.session_state.workbooks]
+                if workbook_names:
+                    selected_wb_name = st.selectbox(
+                        "Select Workbook",
+                        workbook_names,
+                        key='workbook_selector'
+                    )
                     
-                    if selected_views:
-                        if st.button("Download Data"):
-                            try:
-                                view_ids = [
-                                    view.get('@id') or view.get('id')
-                                    for view in st.session_state.views
-                                    if (view.get('@name') or view.get('name')) in selected_views
-                                ]
-                                
-                                with st.spinner('Downloading and saving data...'):
-                                    if download_and_save_data(view_ids, selected_wb_name, selected_views, db_manager):
-                                        st.success(f"Data downloaded and saved successfully!")
-                                        st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed to download data: {str(e)}")
-                                st.session_state.views = None
-                    else:
-                        st.warning("No views found in this workbook. Please select another workbook.")
+                    # Find selected workbook
+                    selected_workbook = next(
+                        wb for wb in st.session_state.workbooks 
+                        if (wb.get('@name', '') or wb.get('name', '')) == selected_wb_name
+                    )
+                    
+                    # Load views if workbook changed
+                    if (not st.session_state.selected_workbook or 
+                        selected_workbook != st.session_state.selected_workbook):
+                        st.session_state.views = load_views(selected_workbook)
+                        st.session_state.selected_workbook = selected_workbook
+                    
+                    # View selection
+                    if st.session_state.views:
+                        view_names = [view.get('@name', '') or view.get('name', '') for view in st.session_state.views]
+                        if view_names:
+                            selected_views = st.multiselect("Select Views", view_names)
+                            
+                            if selected_views:
+                                if st.button("Download Data"):
+                                    try:
+                                        view_ids = [
+                                            view.get('@id', '') or view.get('id', '')
+                                            for view in st.session_state.views
+                                            if (view.get('@name', '') or view.get('name', '')) in selected_views
+                                        ]
+                                        
+                                        with st.spinner('Downloading and saving data...'):
+                                            if download_and_save_data(view_ids, selected_wb_name, selected_views, db_manager):
+                                                st.success(f"Data downloaded and saved successfully!")
+                                                st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Failed to download data: {str(e)}")
+                                        st.session_state.views = None
+                        else:
+                            st.warning("No views found in this workbook. Please select another workbook.")
                 else:
-                    st.error("No workbooks found. Please check your permissions.")
+                    st.warning("No workbooks found. Please check your permissions.")
+            else:
+                st.warning("No workbooks found. Please check your permissions.")
+                
         except Exception as e:
             st.error(f"Error loading workbooks/views: {str(e)}")
             if st.button("Retry Connection"):
                 st.session_state.authenticated = False
                 st.rerun()
-            
+
 def show_modify_schedule_page(job_id):
     """Show modify schedule page"""
     st.title("Modify Schedule")
