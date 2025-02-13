@@ -164,7 +164,7 @@ class ReportFormatter:
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), table_font_size-2),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#808080')),
             ('ROWHEIGHT', (0, 0), (-1, -1), 20),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ])
@@ -221,8 +221,21 @@ class ReportFormatter:
             st.warning("Please configure content options first")
             return
         
-        # Generate preview
-        preview_buffer = self.generate_report(df)
+        # Ensure the report header is included in the email
+        email_content = self.generate_email_content(
+            report_title=st.session_state.report_content.get('report_title', "Data Report"),
+            include_header=True  # Ensure header is included
+        )
+
+        # Ensure the preview respects the user's settings
+        preview_buffer = self.generate_report(
+            df,
+            include_row_count=st.session_state.report_content.get('include_row_count', False),
+            include_totals=st.session_state.report_content.get('include_totals', False),
+            include_averages=st.session_state.report_content.get('include_averages', False),
+            report_title=st.session_state.report_content.get('report_title', "Data Report")
+        )
+        
         st.session_state.preview_buffer = preview_buffer
         
         # Show preview iframe
@@ -264,7 +277,7 @@ class ReportFormatter:
             elements.append(self.header_image)
             elements.append(Spacer(1, 20))
         
-        # Add title
+        # Add title using the provided report_title
         title = Paragraph(report_title, self.title_style or self.styles['Title'])
         elements.append(title)
         
@@ -276,25 +289,25 @@ class ReportFormatter:
         elements.append(Paragraph(f"Generated on: {timestamp}", timestamp_style))
         elements.append(Spacer(1, 20))
         
-        # Define table style to be used for both summary and main tables
-        table_style = self.table_style or TableStyle([
+        # Define default table style
+        default_table_style = TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d5d7b')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f5f5f5')),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.gray),
-            ('ROWHEIGHT', (0, 0), (-1, -1), 25),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#808080')),
+            ('ROWHEIGHT', (0, 0), (-1, -1), 20),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ])
         
-        # Add summary statistics if requested
-        if include_row_count or include_totals or include_averages:
+        # Add summary statistics only if requested
+        if any([include_row_count, include_totals, include_averages]):
             summary_data = [["Metric", "Value"]]  # Header row
             
             if include_row_count:
@@ -311,19 +324,18 @@ class ReportFormatter:
                     avg = df[col].mean()
                     summary_data.append([f"Average {col}", f"{avg:,.2f}"])
             
-            # Create summary table with consistent styling
-            summary_table = Table(summary_data)
-            summary_table.setStyle(table_style)
-            elements.append(summary_table)
-            elements.append(Spacer(1, 20))
+            if len(summary_data) > 1:  # Only add if we have data beyond the header
+                summary_table = Table(summary_data)
+                summary_table.setStyle(self.table_style or default_table_style)
+                elements.append(summary_table)
+                elements.append(Spacer(1, 20))
         
         # Add main data table
         data = [df.columns.tolist()]  # Header row
         data.extend(df.values.tolist())
         
-        # Create main table with consistent styling
         main_table = Table(data)
-        main_table.setStyle(table_style)
+        main_table.setStyle(self.table_style or default_table_style)
         elements.append(main_table)
         
         # Add footer

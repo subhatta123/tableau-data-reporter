@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 import sqlite3
 import base64
+import types
 
 # Third-party imports
 import streamlit as st
@@ -553,47 +554,103 @@ def show_user_dashboard():
 def authenticate(server_url: str, auth_method: str, credentials: dict, site_name: str = None) -> TSC.Server:
     """Authenticate with Tableau server"""
     tableau_auth = None
-    if auth_method == "Personal Access Token":
-        tableau_auth = TSC.PersonalAccessTokenAuth(
-            token_name=credentials['token_name'],
-            personal_access_token=credentials['token_value'],
-            site_id=site_name or ""
-        )
-    else:
-        tableau_auth = TSC.TableauAuth(
-            username=credentials['username'],
-            password=credentials['password'],
-            site_id=site_name or ""
-        )
-    
-    server = TSC.Server(server_url, use_server_version=True)
-    
     try:
         if auth_method == "Personal Access Token":
-            server.auth.sign_in_with_personal_access_token(tableau_auth)
+            tableau_auth = TSC.PersonalAccessTokenAuth(
+                token_name=credentials['token_name'],
+                personal_access_token=credentials['token_value'],
+                site_id=site_name or ""
+            )
         else:
-            server.auth.sign_in(tableau_auth)
-        return server
+            tableau_auth = TSC.TableauAuth(
+                username=credentials['username'],
+                password=credentials['password'],
+                site_id=site_name or ""
+            )
+        
+        server = TSC.Server(server_url, use_server_version=True)
+        
+        try:
+            if auth_method == "Personal Access Token":
+                server.auth.sign_in_with_personal_access_token(tableau_auth)
+            else:
+                server.auth.sign_in(tableau_auth)
+            return server
+        except Exception as sign_in_error:
+            error_msg = str(sign_in_error)
+            if "401" in error_msg:
+                print("Authentication failed: Invalid credentials or insufficient permissions")
+                raise Exception("Authentication failed: Please check your credentials and permissions")
+            elif "403" in error_msg:
+                print("Authorization failed: Insufficient permissions")
+                raise Exception("Authorization failed: You don't have permission to access this site")
+            elif "404" in error_msg:
+                print("Server not found: Invalid server URL or site name")
+                raise Exception("Server not found: Please check your server URL and site name")
+            else:
+                print(f"Authentication error: {error_msg}")
+                raise Exception(f"Authentication failed: {error_msg}")
     except Exception as e:
         print(f"Authentication error: {str(e)}")
         raise e
 
 def get_workbooks(server: TSC.Server) -> list:
-    """Get list of workbooks from Tableau server"""
+    """Get all workbooks from Tableau Server"""
     try:
-        all_workbooks = []
-        pagination_item = server.workbooks.get()[0]
-        for workbook in pagination_item:
-            project = server.projects.get_by_id(workbook.project_id)
-            all_workbooks.append({
-                'id': workbook.id,
-                'name': workbook.name,
-                'project_name': project.name,
-                'project_id': project.id
-            })
-        return all_workbooks
+        print("Starting workbook retrieval...")
+        processed_workbooks = []
+        
+        # Get all workbooks using Pager
+        for workbook in TSC.Pager(server.workbooks):
+            try:
+                print(f"Processing workbook: {workbook.name}")
+                # Get workbook details
+                workbook_info = {
+                    'id': workbook.id,
+                    'name': workbook.name,
+                    'project_id': workbook.project_id,
+                    'project_name': getattr(workbook, 'project_name', 'Unknown Project'),
+                    'views': []
+                }
+                
+                # Get views for this workbook
+                server.workbooks.populate_views(workbook)
+                if hasattr(workbook, 'views') and workbook.views:
+                    for view in workbook.views:
+                        if hasattr(view, 'id') and hasattr(view, 'name'):
+                            workbook_info['views'].append({
+                                'id': view.id,
+                                'name': view.name
+                            })
+                            print(f"Added view: {view.name} (ID: {view.id})")
+                
+                processed_workbooks.append(workbook_info)
+                print(f"Successfully processed workbook {workbook.name} with {len(workbook_info['views'])} views")
+                
+            except Exception as e:
+                print(f"Error processing workbook {getattr(workbook, 'name', 'Unknown')}: {str(e)}")
+                print(f"Error type: {type(e)}")
+                if hasattr(e, 'args'):
+                    print(f"Error args: {e.args}")
+                continue
+        
+        if not processed_workbooks:
+            print("No workbooks were found or user lacks necessary permissions")
+            print("Server info:", server.server_address)
+            print("Site info:", server.site_id)
+            # Get current user info
+            current_user = server.users.get_by_id(server.user_id)
+            print("User info:", current_user.name if current_user else "Unknown user")
+        else:
+            print(f"Successfully retrieved {len(processed_workbooks)} workbooks")
+        
+        return processed_workbooks
+        
     except Exception as e:
         print(f"Error getting workbooks: {str(e)}")
+        print(f"Error type: {type(e)}")
+        if hasattr(e, 'args'):
+            print(f"Error args: {e.args}")
         return []
 
 def generate_table_name(workbook_name: str, view_names: list) -> str:
@@ -605,34 +662,134 @@ def generate_table_name(workbook_name: str, view_names: list) -> str:
     return f"{'t' if clean_name[0].isdigit() else ''}{clean_name[:50]}"
 
 def download_and_save_data(server: TSC.Server, view_ids: list, workbook_name: str, view_names: list, table_name: str) -> bool:
-    """Download data from Tableau views and save to SQLite database"""
+    """Download data from views and save to database"""
+    data_downloaded = False
+    
     try:
-        all_data = []
-        for view_id in view_ids:
-            view = server.views.get_by_id(view_id)
-            csv_data = server.views.get_data(view)
-            df = pd.read_csv(io.StringIO(csv_data))
-            all_data.append(df)
-        
-        # Combine all dataframes
-        final_df = pd.concat(all_data, axis=0, ignore_index=True)
-        
-        # Save to SQLite
         with sqlite3.connect('data/tableau_data.db') as conn:
-            final_df.to_sql(table_name, conn, if_exists='replace', index=False)
-        return True
+            print(f"\nAttempting to download data for {len(view_ids)} views from workbook: {workbook_name}")
+            
+            for view_id, view_name in zip(view_ids, view_names):
+                print(f"\nProcessing view: {view_name} (ID: {view_id})")
+                
+                try:
+                    # Get the view object
+                    view = server.views.get_by_id(view_id)
+                    if not view:
+                        print(f"View not found: {view_name}")
+                        continue
+                    
+                    print("Attempting to retrieve CSV data...")
+                    # First attempt with request options
+                    req_option = TSC.RequestOptions()
+                    req_option.maxage = 0
+                    
+                    server.views.populate_csv(view, req_option)
+                    csv_data = view.csv
+                    
+                    if not csv_data:
+                        print("Failed to retrieve CSV using populate_csv with request options. Trying without request options...")
+                        server.views.populate_csv(view)
+                        csv_data = view.csv
+                    
+                    if not csv_data:
+                        print(f"Failed to get CSV data for view {view_name}")
+                        continue
+                    
+                    # Convert CSV data to a list if it's a generator
+                    if isinstance(csv_data, types.GeneratorType):
+                        csv_data = list(csv_data)
+                    
+                    # Ensure CSV data is a string
+                    if isinstance(csv_data, list):
+                        # Decode bytes to string if necessary
+                        csv_data = [chunk.decode('utf-8') if isinstance(chunk, bytes) else chunk for chunk in csv_data]
+                        csv_data = ''.join(csv_data)
+                    
+                    # Convert CSV to string
+                    try:
+                        if isinstance(csv_data, bytes):
+                            csv_string = csv_data.decode('utf-8')
+                        else:
+                            csv_string = csv_data
+                        
+                        print(f"Successfully retrieved CSV. First 100 chars: {csv_string[:100]}")
+                        
+                        # Load into DataFrame
+                        df = pd.read_csv(io.StringIO(csv_string))
+                        print(f"\nDataFrame info for {view_name}:")
+                        print(df.info())
+                        
+                        if df.empty:
+                            print(f"Warning: Empty DataFrame for view {view_name}")
+                            print("CSV data preview:")
+                            print(csv_string[:500])
+                            continue
+                        
+                        # Save to database
+                        print(f"Saving {len(df)} rows to database...")
+                        df.to_sql(table_name, conn, if_exists='replace', index=False)
+                        print(f"Successfully saved {len(df)} rows to database table: {table_name}")
+                        data_downloaded = True
+                        break  # Successfully got data from one view, no need to try others
+                        
+                    except Exception as df_error:
+                        print(f"Error processing DataFrame: {str(df_error)}")
+                        print("CSV data preview:")
+                        print(csv_string[:500] if 'csv_string' in locals() else "No CSV string available")
+                        continue
+                    
+                except Exception as view_error:
+                    print(f"Error downloading data from view {view_name}: {str(view_error)}")
+                    print(f"Error type: {type(view_error)}")
+                    if hasattr(view_error, 'args'):
+                        print(f"Error args: {view_error.args}")
+                    continue
+            
+            if not data_downloaded:
+                print("\nFailed to download data from any view")
+                return False
+            
+            return data_downloaded
+            
     except Exception as e:
-        print(f"Error downloading data: {str(e)}")
+        print(f"Error in download_and_save_data: {str(e)}")
+        print(f"Error type: {type(e)}")
+        if hasattr(e, 'args'):
+            print(f"Error args: {e.args}")
         return False
 
 def load_views(server: TSC.Server, workbook: dict) -> list:
     """Get list of views from a workbook"""
     try:
+        print(f"Loading views for workbook: {workbook['name']}")
         workbook_obj = server.workbooks.get_by_id(workbook['id'])
+        
+        # Populate views
         server.workbooks.populate_views(workbook_obj)
-        return [{'id': view.id, 'name': view.name} for view in workbook_obj.views]
+        print(f"Found {len(workbook_obj.views) if hasattr(workbook_obj, 'views') else 0} views")
+        
+        views = []
+        if hasattr(workbook_obj, 'views'):
+            for view in workbook_obj.views:
+                try:
+                    if hasattr(view, 'id') and hasattr(view, 'name'):
+                        view_info = {'id': view.id, 'name': view.name}
+                        views.append(view_info)
+                        print(f"Added view: {view.name} (ID: {view.id})")
+                    else:
+                        print(f"Warning: View missing required attributes - Available attributes: {dir(view)}")
+                except Exception as view_error:
+                    print(f"Error processing view: {str(view_error)}")
+                    continue
+        
+        return views
+        
     except Exception as e:
         print(f"Error loading views: {str(e)}")
+        print(f"Error type: {type(e)}")
+        if hasattr(e, 'args'):
+            print(f"Error args: {e.args}")
         return []
 
 def show_tableau_page():
@@ -1356,9 +1513,9 @@ def show_schedule_page():
                     day = st.number_input("Day of Month", min_value=1, max_value=31, value=1)
                     col1, col2 = st.columns(2)
                     with col1:
-                        hour = st.number_input("Hour (24-hour format)", min_value=0, max_value=23, value=8)
+                        hour = st.number_input("Hour (24-hour format)", 0, 23, value=8)
                     with col2:
-                        minute = st.number_input("Minute", min_value=0, max_value=59, value=0)
+                        minute = st.number_input("Minute", 0, 59, value=0)
                     schedule_config = {
                         'type': 'monthly',
                         'day': day,

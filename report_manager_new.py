@@ -455,62 +455,33 @@ class ReportManager:
         try:
             print(f"\nAttempting to schedule report for dataset: {dataset_name}")
             print(f"Schedule config: {schedule_config}")
+            print(f"Email config: {email_config}")
             
             # Input validation
-            if not dataset_name or not email_config or not schedule_config:
-                raise ValueError("Missing required parameters for scheduling")
-            
-            # Validate schedule configuration
-            if 'type' not in schedule_config:
-                raise ValueError("Schedule type not specified")
-            
-            # Validate email configuration
-            if not email_config.get('recipients'):
-                raise ValueError("No email recipients specified")
+            if not dataset_name:
+                raise ValueError("Dataset name is required")
+            if not email_config or not email_config.get('recipients'):
+                raise ValueError("Email configuration with recipients is required")
+            if not schedule_config or 'type' not in schedule_config:
+                raise ValueError("Schedule configuration with type is required")
 
-            # Check for existing schedules for this dataset
-            existing_schedules = self.get_active_schedules()
-            print(f"Current active schedules: {len(existing_schedules)}")
-            
-            for existing_job_id, schedule in existing_schedules.items():
-                if (schedule['dataset_name'] == dataset_name and 
-                    schedule['schedule_config']['type'] == schedule_config['type']):
-                    # For one-time schedules, check date and time
-                    if schedule_config['type'] == 'one-time':
-                        if (schedule['schedule_config']['date'] == schedule_config['date'] and
-                            schedule['schedule_config']['hour'] == schedule_config['hour'] and
-                            schedule['schedule_config']['minute'] == schedule_config['minute']):
-                            print("A schedule already exists for this dataset at the specified time")
-                            return None
-                    else:
-                        # For recurring schedules, check timing
-                        if (schedule['schedule_config'].get('hour') == schedule_config.get('hour') and
-                            schedule['schedule_config'].get('minute') == schedule_config.get('minute') and
-                            schedule['schedule_config'].get('day') == schedule_config.get('day')):
-                            print("A schedule already exists for this dataset with the same configuration")
-                            return None
-
-            # Generate job_id
+            # Generate job_id first
             job_id = str(uuid.uuid4())
             print(f"Generated job ID: {job_id}")
             
-            # If format_config is not provided but we have report content in session state, include it
-            if format_config is None and hasattr(st, 'session_state') and 'report_content' in st.session_state:
-                format_config = {
-                    'report_content': st.session_state.report_content
-                }
+            # Prepare format config
+            if format_config is None:
+                format_config = {}
             
-            # Ensure format_config has default report content if none provided
-            if format_config and 'report_content' not in format_config:
+            # Ensure report content is included
+            if 'report_content' not in format_config:
                 format_config['report_content'] = {
-                    'selected_columns': None,  # Will use all columns
+                    'report_title': f"Report: {dataset_name}",
+                    'selected_columns': None,
                     'include_row_count': True,
                     'include_totals': True,
                     'include_averages': True
                 }
-            
-            # Serialize format config for storage
-            serialized_format_config = self._serialize_format_config(format_config)
             
             # Create the job based on schedule type
             try:
@@ -518,14 +489,15 @@ class ReportManager:
                     if 'date' not in schedule_config:
                         raise ValueError("Date not specified for one-time schedule")
                     
-                    # Parse date and time
                     schedule_date = datetime.strptime(
                         f"{schedule_config['date']} {schedule_config['hour']:02d}:{schedule_config['minute']:02d}:00",
                         "%Y-%m-%d %H:%M:%S"
                     )
-                    print(f"Scheduling one-time job for: {schedule_date}")
                     
-                    # Add job to scheduler
+                    if schedule_date <= datetime.now():
+                        raise ValueError("Schedule date must be in the future")
+                    
+                    print(f"Scheduling one-time job for: {schedule_date}")
                     self.scheduler.add_job(
                         func=self.send_report,
                         trigger='date',
@@ -535,46 +507,35 @@ class ReportManager:
                         name=f"Report_{dataset_name}"
                     )
                 
-                elif schedule_config['type'] == 'daily':
-                    print(f"Scheduling daily job at {schedule_config['hour']:02d}:{schedule_config['minute']:02d}")
+                elif schedule_config['type'] in ['daily', 'weekly', 'monthly']:
+                    trigger_args = {
+                        'hour': schedule_config['hour'],
+                        'minute': schedule_config['minute']
+                    }
+                    
+                    if schedule_config['type'] == 'weekly':
+                        trigger_args['day_of_week'] = schedule_config['day']
+                    elif schedule_config['type'] == 'monthly':
+                        trigger_args['day'] = schedule_config['day']
+                    
+                    print(f"Scheduling {schedule_config['type']} job with args: {trigger_args}")
                     self.scheduler.add_job(
                         func=self.send_report,
                         trigger='cron',
-                        hour=schedule_config['hour'],
-                        minute=schedule_config['minute'],
                         args=[dataset_name, email_config, format_config],
                         id=job_id,
-                        name=f"Report_{dataset_name}"
+                        name=f"Report_{dataset_name}",
+                        **trigger_args
                     )
-                
-                elif schedule_config['type'] == 'weekly':
-                    print(f"Scheduling weekly job on day {schedule_config['day']} at {schedule_config['hour']:02d}:{schedule_config['minute']:02d}")
-                    self.scheduler.add_job(
-                        func=self.send_report,
-                        trigger='cron',
-                        day_of_week=schedule_config['day'],
-                        hour=schedule_config['hour'],
-                        minute=schedule_config['minute'],
-                        args=[dataset_name, email_config, format_config],
-                        id=job_id,
-                        name=f"Report_{dataset_name}"
-                    )
-                
-                elif schedule_config['type'] == 'monthly':
-                    print(f"Scheduling monthly job on day {schedule_config['day']} at {schedule_config['hour']:02d}:{schedule_config['minute']:02d}")
-                    self.scheduler.add_job(
-                        func=self.send_report,
-                        trigger='cron',
-                        day=schedule_config['day'],
-                        hour=schedule_config['hour'],
-                        minute=schedule_config['minute'],
-                        args=[dataset_name, email_config, format_config],
-                        id=job_id,
-                        name=f"Report_{dataset_name}"
-                    )
-                
                 else:
                     raise ValueError(f"Invalid schedule type: {schedule_config['type']}")
+                
+                # Verify the job was added
+                job = self.scheduler.get_job(job_id)
+                if not job:
+                    raise ValueError("Failed to add job to scheduler")
+                
+                print(f"Job successfully added to scheduler. Next run time: {job.next_run_time}")
                 
                 # Save schedule to file
                 schedules = self.load_schedules()
@@ -582,34 +543,23 @@ class ReportManager:
                     'dataset_name': dataset_name,
                     'email_config': email_config,
                     'schedule_config': schedule_config,
-                    'format_config': serialized_format_config,
+                    'format_config': self._serialize_format_config(format_config),
                     'created_at': datetime.now().isoformat()
                 }
                 self.save_schedules(schedules)
                 
-                # Verify the job was added
-                job = self.scheduler.get_job(job_id)
-                if job:
-                    print(f"Job successfully added to scheduler. Next run time: {job.next_run_time}")
-                else:
-                    print("Warning: Job not found in scheduler after adding")
-                
                 print(f"Successfully scheduled report with ID: {job_id}")
                 return job_id
                 
-            except Exception as scheduler_error:
-                print(f"Failed to create schedule: {str(scheduler_error)}")
-                print(f"Error type: {type(scheduler_error)}")
-                print(f"Error details: {scheduler_error.__dict__ if hasattr(scheduler_error, '__dict__') else 'No details'}")
+            except Exception as e:
+                print(f"Failed to create schedule: {str(e)}")
                 # Clean up if job was partially created
                 if self.scheduler.get_job(job_id):
                     self.scheduler.remove_job(job_id)
-                return None
+                raise
                 
         except Exception as e:
             print(f"Failed to schedule report: {str(e)}")
-            print(f"Error type: {type(e)}")
-            print(f"Error details: {e.__dict__ if hasattr(e, '__dict__') else 'No details'}")
             return None
 
     def verify_whatsapp_number(self, to_number: str) -> bool:
