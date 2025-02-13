@@ -567,9 +567,16 @@ def authenticate(server_url: str, auth_method: str, credentials: dict, site_name
         )
     
     server = TSC.Server(server_url, use_server_version=True)
-    server.auth = tableau_auth
-    server.auth.sign_in(server)
-    return server
+    
+    try:
+        if auth_method == "Personal Access Token":
+            server.auth.sign_in_with_personal_access_token(tableau_auth)
+        else:
+            server.auth.sign_in(tableau_auth)
+        return server
+    except Exception as e:
+        print(f"Authentication error: {str(e)}")
+        raise e
 
 def get_workbooks(server: TSC.Server) -> list:
     """Get list of workbooks from Tableau server"""
@@ -1131,8 +1138,11 @@ class DatabaseManager:
                 }
             else:  # monthly
                 day = st.number_input("Day of Month", 1, 31, value=config.get('day', 1))
-                hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
-                minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
+                col1, col2 = st.columns(2)
+                with col1:
+                    hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
+                with col2:
+                    minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
                 schedule_config = {
                     'type': 'monthly',
                     'day': day,
