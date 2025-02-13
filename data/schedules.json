@@ -1,0 +1,1024 @@
+{
+  "7e1149a6-08d9-4b48-a1c3-9c99ed2765a0": {
+    "dataset_name": "Book1_72285484_20250210_190949",
+    "email_config": {
+      "recipients": [
+        "suddh123@gmail.com"
+      ],
+      "whatsapp_recipients": [
+        "+919515350276"
+      ],
+      "body": "try",
+      "format": "PDF",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "tableautoexcel@gmail.com",
+      "sender_password": "ptvy yerb ymbj fngu",
+      "base_url": "https://your-domain.com"
+    },
+    "schedule_config": {
+      "type": "one-time",
+      "date": "2025-02-13",
+      "hour": 16,
+      "minute": 25
+    },
+    "format_config": {
+      "page_size": [
+        595.2755905511812,
+        841.8897637795277
+      ],
+      "orientation": "landscape",
+      "margins": [
+        36.0,
+        36.0,
+        36.0,
+        36.0
+      ],
+      "chart_size": [
+        432.0,
+        288.0
+      ],
+      "report_content": {
+        "report_title": "tester",
+        "selected_columns": [
+          "Category",
+          "Sub-Category",
+          "Sales"
+        ],
+        "include_row_count": false,
+        "include_totals": false,
+        "include_averages": false
+      },
+      "title_style": {
+        "fontName": "Times-Roman",
+        "fontSize": 24,
+        "alignment": 1,
+        "textColor": "#000000",
+        "spaceAfter": 30
+      },
+      "table_style": [
+        [
+          "BACKGROUND",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#2d5d7b"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#ffffff"
+        ],
+        [
+          "ALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "LEFT"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "Helvetica-Bold"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          10.0
+        ],
+        [
+          "BOTTOMPADDING",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          12.0
+        ],
+        [
+          "BACKGROUND",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#f5f5f5"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#000000"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "Helvetica"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          8.0
+        ],
+        [
+          "ROWHEIGHT",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          20.0
+        ],
+        [
+          "VALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "MIDDLE"
+        ]
+      ]
+    },
+    "created_at": "2025-02-13T16:23:22.656119"
+  },
+  "c9d1c8a4-86ab-42eb-b19c-61464fde43cb": {
+    "dataset_name": "Book1_72285484_20250210_190949",
+    "email_config": {
+      "recipients": [
+        "suddh123@gmail.com"
+      ],
+      "whatsapp_recipients": [],
+      "body": "test",
+      "format": "PDF",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "tableautoexcel@gmail.com",
+      "sender_password": "ptvy yerb ymbj fngu",
+      "base_url": "https://your-domain.com"
+    },
+    "schedule_config": {
+      "type": "one-time",
+      "date": "2025-02-13",
+      "hour": 17,
+      "minute": 31
+    },
+    "format_config": {
+      "page_size": [
+        595.2755905511812,
+        841.8897637795277
+      ],
+      "orientation": "portrait",
+      "margins": [
+        36.0,
+        36.0,
+        36.0,
+        36.0
+      ],
+      "chart_size": [
+        432.0,
+        288.0
+      ],
+      "report_content": {
+        "report_title": "report",
+        "selected_columns": [
+          "Category",
+          "Sub-Category",
+          "Sales"
+        ],
+        "include_row_count": false,
+        "include_totals": false,
+        "include_averages": false
+      },
+      "title_style": {
+        "fontName": "Helvetica",
+        "fontSize": 24,
+        "alignment": 0,
+        "textColor": "#000000",
+        "spaceAfter": 30
+      },
+      "table_style": [
+        [
+          "BACKGROUND",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#2d5d7b"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#ffffff"
+        ],
+        [
+          "ALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "LEFT"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "Helvetica-Bold"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          10.0
+        ],
+        [
+          "BOTTOMPADDING",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          12.0
+        ],
+        [
+          "BACKGROUND",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#830606"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#000000"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "Helvetica"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          8.0
+        ],
+        [
+          "ROWHEIGHT",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          20.0
+        ],
+        [
+          "VALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "MIDDLE"
+        ]
+      ]
+    },
+    "created_at": "2025-02-13T17:30:54.398682"
+  },
+  "2508457f-3413-4223-bf80-2e1c7341dfa0": {
+    "dataset_name": "Book1_72285484_20250210_190949",
+    "email_config": {
+      "recipients": [
+        "suddh123@gmail.com"
+      ],
+      "whatsapp_recipients": [],
+      "body": "test",
+      "format": "PDF",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "tableautoexcel@gmail.com",
+      "sender_password": "ptvy yerb ymbj fngu",
+      "base_url": "https://your-domain.com"
+    },
+    "schedule_config": {
+      "type": "one-time",
+      "date": "2025-02-13",
+      "hour": 17,
+      "minute": 50
+    },
+    "format_config": {
+      "page_size": [
+        595.2755905511812,
+        841.8897637795277
+      ],
+      "orientation": "portrait",
+      "margins": [
+        36.0,
+        36.0,
+        36.0,
+        36.0
+      ],
+      "chart_size": [
+        432.0,
+        288.0
+      ],
+      "report_content": {
+        "report_title": "ret",
+        "selected_columns": [
+          "Category",
+          "Sub-Category",
+          "Sales"
+        ],
+        "include_row_count": false,
+        "include_totals": false,
+        "include_averages": false
+      },
+      "title_style": {
+        "fontName": "Helvetica",
+        "fontSize": 24,
+        "alignment": 0,
+        "textColor": "#000000",
+        "spaceAfter": 30
+      },
+      "table_style": [
+        [
+          "BACKGROUND",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#2d5d7b"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#ffffff"
+        ],
+        [
+          "ALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "LEFT"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "Helvetica-Bold"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          10.0
+        ],
+        [
+          "BOTTOMPADDING",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          12.0
+        ],
+        [
+          "BACKGROUND",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#f5f5f5"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#000000"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "Helvetica"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          8.0
+        ],
+        [
+          "ROWHEIGHT",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          20.0
+        ],
+        [
+          "VALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "MIDDLE"
+        ]
+      ]
+    },
+    "created_at": "2025-02-13T17:49:48.364096"
+  },
+  "0f118f2f-ce70-4fb4-ae7c-a78ce7df9c26": {
+    "dataset_name": "Book1_72285484_20250210_190949",
+    "email_config": {
+      "recipients": [
+        "suddh123@gmail.com"
+      ],
+      "whatsapp_recipients": [],
+      "body": "",
+      "format": "PDF",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "tableautoexcel@gmail.com",
+      "sender_password": "ptvy yerb ymbj fngu",
+      "base_url": "https://your-domain.com"
+    },
+    "schedule_config": {
+      "type": "one-time",
+      "date": "2025-02-13",
+      "hour": 17,
+      "minute": 55
+    },
+    "format_config": {
+      "page_size": [
+        595.2755905511812,
+        841.8897637795277
+      ],
+      "orientation": "portrait",
+      "margins": [
+        36.0,
+        36.0,
+        36.0,
+        36.0
+      ],
+      "chart_size": [
+        432.0,
+        288.0
+      ],
+      "report_content": {
+        "report_title": "tt",
+        "selected_columns": [
+          "Category",
+          "Sub-Category",
+          "Sales"
+        ],
+        "include_row_count": false,
+        "include_totals": false,
+        "include_averages": false
+      },
+      "title_style": {
+        "fontName": "Helvetica",
+        "fontSize": 24,
+        "alignment": 0,
+        "textColor": "#000000",
+        "spaceAfter": 30
+      },
+      "table_style": [
+        [
+          "BACKGROUND",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#2d5d7b"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#ffffff"
+        ],
+        [
+          "ALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "LEFT"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "Helvetica-Bold"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          10.0
+        ],
+        [
+          "BOTTOMPADDING",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          12.0
+        ],
+        [
+          "BACKGROUND",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#f5f5f5"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#000000"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "Helvetica"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          8.0
+        ],
+        [
+          "ROWHEIGHT",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          20.0
+        ],
+        [
+          "VALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "MIDDLE"
+        ]
+      ]
+    },
+    "created_at": "2025-02-13T17:54:08.263811"
+  },
+  "e3f473ad-43f6-4ba7-a632-bfa41a02d00e": {
+    "dataset_name": "Book1_72285484_20250210_190949",
+    "email_config": {
+      "recipients": [
+        "suddh123@gmail.com"
+      ],
+      "whatsapp_recipients": [],
+      "body": "",
+      "format": "PDF",
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "tableautoexcel@gmail.com",
+      "sender_password": "ptvy yerb ymbj fngu",
+      "base_url": "https://your-domain.com"
+    },
+    "schedule_config": {
+      "type": "one-time",
+      "date": "2025-02-13",
+      "hour": 17,
+      "minute": 59
+    },
+    "format_config": {
+      "page_size": [
+        595.2755905511812,
+        841.8897637795277
+      ],
+      "orientation": "portrait",
+      "margins": [
+        36.0,
+        36.0,
+        36.0,
+        36.0
+      ],
+      "chart_size": [
+        432.0,
+        288.0
+      ],
+      "report_content": {
+        "report_title": "Data Report",
+        "selected_columns": [
+          "Category",
+          "Sub-Category",
+          "Sales"
+        ],
+        "include_row_count": false,
+        "include_totals": false,
+        "include_averages": false
+      },
+      "title_style": {
+        "fontName": "Helvetica",
+        "fontSize": 24,
+        "alignment": 0,
+        "textColor": "#000000",
+        "spaceAfter": 30
+      },
+      "table_style": [
+        [
+          "BACKGROUND",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#2d5d7b"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "#ffffff"
+        ],
+        [
+          "ALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "LEFT"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          "Helvetica-Bold"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          10.0
+        ],
+        [
+          "BOTTOMPADDING",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            0
+          ],
+          12.0
+        ],
+        [
+          "BACKGROUND",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#f5f5f5"
+        ],
+        [
+          "TEXTCOLOR",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "#000000"
+        ],
+        [
+          "FONTNAME",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          "Helvetica"
+        ],
+        [
+          "FONTSIZE",
+          [
+            0,
+            1
+          ],
+          [
+            -1,
+            -1
+          ],
+          8.0
+        ],
+        [
+          "ROWHEIGHT",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          20.0
+        ],
+        [
+          "VALIGN",
+          [
+            0,
+            0
+          ],
+          [
+            -1,
+            -1
+          ],
+          "MIDDLE"
+        ]
+      ]
+    },
+    "created_at": "2025-02-13T17:58:10.256702"
+  }
+}
