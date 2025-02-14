@@ -34,6 +34,10 @@ class ReportManager:
         self.public_reports_dir = Path("static/reports")
         self.public_reports_dir.mkdir(parents=True, exist_ok=True)
         
+        # Initialize database
+        self.db_path = self.data_dir / "tableau_data.db"
+        self._init_database()
+        
         self.schedules_file = self.data_dir / "schedules.json"
         if not self.schedules_file.exists():
             self.save_schedules({})
@@ -49,7 +53,7 @@ class ReportManager:
         self.twilio_account_sid = os.getenv('TWILIO_ACCOUNT_SID')
         self.twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
         
-        # Base URL for report access (update this with your domain)
+        # Base URL for report access
         self.base_url = os.getenv('BASE_URL', 'http://localhost:8501')
         
         if all([self.twilio_account_sid, self.twilio_auth_token, self.twilio_whatsapp_number]):
@@ -61,6 +65,47 @@ class ReportManager:
         else:
             print("Twilio configuration incomplete. Please check your .env file")
     
+    def _init_database(self):
+        """Initialize database and create necessary tables"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Create schedules table if it doesn't exist
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id TEXT PRIMARY KEY,
+                    dataset_name TEXT NOT NULL,
+                    schedule_type TEXT NOT NULL,
+                    schedule_config TEXT NOT NULL,
+                    email_config TEXT NOT NULL,
+                    format_config TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_run TIMESTAMP,
+                    next_run TIMESTAMP,
+                    status TEXT DEFAULT 'active'
+                )
+                """)
+                
+                # Create schedule_runs table for logging
+                cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schedule_runs (
+                    id TEXT PRIMARY KEY,
+                    schedule_id TEXT NOT NULL,
+                    run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT NOT NULL,
+                    error_message TEXT,
+                    FOREIGN KEY (schedule_id) REFERENCES schedules (id)
+                )
+                """)
+                
+                conn.commit()
+                print("Database tables initialized successfully")
+                
+        except Exception as e:
+            print(f"Error initializing database: {str(e)}")
+            raise
+
     def generate_pdf(self, df, title):
         """Generate PDF report from DataFrame"""
         buffer = io.BytesIO()
@@ -820,31 +865,87 @@ _(Link expires in 24 hours)_"""
     def load_schedules(self) -> dict:
         """Load saved schedules"""
         try:
-            if self.schedules_file.exists():
-                with open(self.schedules_file, 'r') as f:
-                    schedules = json.load(f)
-                print(f"Loaded {len(schedules)} schedules from {self.schedules_file}")
-                return schedules
+            schedules = {}
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM schedules WHERE status = 'active'")
+                rows = cursor.fetchall()
+                
+                for row in cursor.execute("SELECT * FROM schedules WHERE status = 'active'"):
+                    schedule_id = row[0]
+                    schedules[schedule_id] = {
+                        'dataset_name': row[1],
+                        'schedule_type': row[2],
+                        'schedule_config': json.loads(row[3]),
+                        'email_config': json.loads(row[4]),
+                        'format_config': json.loads(row[5]) if row[5] else None,
+                        'created_at': row[6],
+                        'last_run': row[7],
+                        'next_run': row[8],
+                        'status': row[9]
+                    }
+                
+            print(f"Loaded {len(schedules)} schedules from database")
+            return schedules
+            
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                print("Schedules table not found, initializing database...")
+                self._init_database()
+                return {}
             else:
-                print("No schedules file found, creating new one")
-                self.save_schedules({})
+                print(f"Error loading schedules: {str(e)}")
                 return {}
         except Exception as e:
             print(f"Error loading schedules: {str(e)}")
             return {}
     
     def save_schedules(self, schedules: dict):
-        """Save schedules to file"""
+        """Save schedules to database"""
         try:
-            # Create data directory if it doesn't exist
-            self.data_dir.mkdir(exist_ok=True)
-            
-            # Save schedules to file
-            with open(self.schedules_file, 'w') as f:
-                json.dump(schedules, f, indent=2)  # Use indent for better readability
-            print(f"Saved {len(schedules)} schedules to {self.schedules_file}")
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Begin transaction
+                cursor.execute("BEGIN TRANSACTION")
+                
+                try:
+                    for schedule_id, schedule in schedules.items():
+                        # Convert schedule data to JSON strings
+                        schedule_config = json.dumps(schedule['schedule_config'])
+                        email_config = json.dumps(schedule['email_config'])
+                        format_config = json.dumps(schedule.get('format_config')) if schedule.get('format_config') else None
+                        
+                        # Insert or update schedule
+                        cursor.execute("""
+                        INSERT OR REPLACE INTO schedules (
+                            id, dataset_name, schedule_type, schedule_config, 
+                            email_config, format_config, created_at, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            schedule_id,
+                            schedule['dataset_name'],
+                            schedule['schedule_config']['type'],
+                            schedule_config,
+                            email_config,
+                            format_config,
+                            schedule.get('created_at', datetime.now().isoformat()),
+                            'active'
+                        ))
+                    
+                    # Commit transaction
+                    conn.commit()
+                    print(f"Saved {len(schedules)} schedules to database")
+                    
+                except Exception as e:
+                    # Rollback on error
+                    conn.rollback()
+                    print(f"Error saving schedules, rolling back: {str(e)}")
+                    raise
+                    
         except Exception as e:
-            print(f"Error saving schedules: {str(e)}")
+            print(f"Error saving schedules to database: {str(e)}")
+            raise
     
     def load_saved_schedules(self):
         """Load saved schedules into scheduler"""
