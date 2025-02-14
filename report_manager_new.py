@@ -90,12 +90,12 @@ class ReportManager:
                 # Create schedule_runs table for logging
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS schedule_runs (
-                    id TEXT PRIMARY KEY,
-                    schedule_id TEXT NOT NULL,
+                    run_id TEXT PRIMARY KEY,
+                    id TEXT NOT NULL,
                     run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT NOT NULL,
                     error_message TEXT,
-                    FOREIGN KEY (schedule_id) REFERENCES schedules (id)
+                    FOREIGN KEY (id) REFERENCES schedules (id)
                 )
                 """)
                 
@@ -868,17 +868,22 @@ _(Link expires in 24 hours)_"""
             schedules = {}
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Get column names from the table
+                cursor.execute("PRAGMA table_info(schedules)")
+                columns = [col[1] for col in cursor.fetchall()]
+                print(f"Available columns: {columns}")
+                
                 cursor.execute("SELECT * FROM schedules WHERE status = 'active'")
                 rows = cursor.fetchall()
                 
-                for row in cursor.execute("SELECT * FROM schedules WHERE status = 'active'"):
-                    schedule_id = row[0]
+                for row in rows:
+                    schedule_id = row[0]  # id is the first column
                     schedules[schedule_id] = {
                         'dataset_name': row[1],
-                        'schedule_type': row[2],
-                        'schedule_config': json.loads(row[3]),
-                        'email_config': json.loads(row[4]),
-                        'format_config': json.loads(row[5]) if row[5] else None,
+                        'schedule_config': json.loads(row[3]),  # schedule_config is the 4th column
+                        'email_config': json.loads(row[4]),     # email_config is the 5th column
+                        'format_config': json.loads(row[5]) if row[5] else None,  # format_config is the 6th column
                         'created_at': row[6],
                         'last_run': row[7],
                         'next_run': row[8],
@@ -895,7 +900,13 @@ _(Link expires in 24 hours)_"""
                 return {}
             else:
                 print(f"Error loading schedules: {str(e)}")
-                return {}
+                print("Attempting to recreate schedules table...")
+                try:
+                    self._init_database()
+                    return self.load_schedules()
+                except Exception as init_error:
+                    print(f"Failed to recreate schedules table: {str(init_error)}")
+                    return {}
         except Exception as e:
             print(f"Error loading schedules: {str(e)}")
             return {}
