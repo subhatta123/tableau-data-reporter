@@ -221,13 +221,7 @@ class ReportFormatter:
             st.warning("Please configure content options first")
             return
         
-        # Ensure the report header is included in the email
-        email_content = self.generate_email_content(
-            report_title=st.session_state.report_content.get('report_title', "Data Report"),
-            include_header=True  # Ensure header is included
-        )
-
-        # Ensure the preview respects the user's settings
+        # Generate preview with user's settings
         preview_buffer = self.generate_report(
             df,
             include_row_count=st.session_state.report_content.get('include_row_count', False),
@@ -353,4 +347,26 @@ class ReportFormatter:
         # Build PDF
         doc.build(elements)
         buffer.seek(0)
-        return buffer 
+        return buffer
+
+    def generate_email_content(self, report_title="Data Report", include_header=True):
+        """Generate email content with proper formatting"""
+        email_content = {
+            'subject': f"Report: {report_title}",
+            'body': f"""
+Dear User,
+
+Your report "{report_title}" has been generated and is attached to this email.
+
+Report Details:
+- Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- Title: {report_title}
+
+Please find the report attached to this email.
+
+Best regards,
+Tableau Data Reporter
+            """.strip(),
+            'include_header': include_header
+        }
+        return email_content 
