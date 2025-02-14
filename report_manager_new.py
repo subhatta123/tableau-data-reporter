@@ -66,15 +66,18 @@ class ReportManager:
             print("Twilio configuration incomplete. Please check your .env file")
     
     def _init_database(self):
-        """Initialize database and create necessary tables"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Create schedules table if it doesn't exist
-                cursor.execute("""
-                CREATE TABLE IF NOT EXISTS schedules (
-                    id TEXT PRIMARY KEY,
+        """Initialize SQLite database"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Drop existing tables if they exist
+            cursor.execute("DROP TABLE IF EXISTS schedule_runs")
+            cursor.execute("DROP TABLE IF EXISTS schedules")
+            
+            # Create schedules table
+            cursor.execute("""
+                CREATE TABLE schedules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     dataset_name TEXT NOT NULL,
                     schedule_type TEXT NOT NULL,
                     schedule_config TEXT NOT NULL,
@@ -85,26 +88,22 @@ class ReportManager:
                     next_run TIMESTAMP,
                     status TEXT DEFAULT 'active'
                 )
-                """)
-                
-                # Create schedule_runs table for logging
-                cursor.execute("""
-                CREATE TABLE IF NOT EXISTS schedule_runs (
-                    run_id TEXT PRIMARY KEY,
-                    schedule_id TEXT NOT NULL,
-                    run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            """)
+            
+            # Create schedule_runs table
+            cursor.execute("""
+                CREATE TABLE schedule_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    schedule_id INTEGER NOT NULL,
+                    run_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     FOREIGN KEY (schedule_id) REFERENCES schedules (id)
                 )
-                """)
-                
-                conn.commit()
-                print("Database tables initialized successfully")
-                
-        except Exception as e:
-            print(f"Error initializing database: {str(e)}")
-            raise
+            """)
+            
+            conn.commit()
+            print("Database initialized successfully")
 
     def generate_pdf(self, df, title):
         """Generate PDF report from DataFrame"""
@@ -869,51 +868,46 @@ _(Link expires in 24 hours)_"""
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # Get column names from the table
-                cursor.execute("PRAGMA table_info(schedules)")
-                columns = [col[1] for col in cursor.fetchall()]
-                print(f"Available columns: {columns}")
-                
-                cursor.execute("""
-                    SELECT id, dataset_name, schedule_type, schedule_config, 
-                           email_config, format_config, created_at, last_run, 
-                           next_run, status 
-                    FROM schedules 
-                    WHERE status = 'active'
-                """)
-                rows = cursor.fetchall()
-                
-                for row in rows:
-                    schedule_id = row[0]  # id column
-                    schedules[schedule_id] = {
-                        'dataset_name': row[1],
-                        'schedule_type': row[2],
-                        'schedule_config': json.loads(row[3]),
-                        'email_config': json.loads(row[4]),
-                        'format_config': json.loads(row[5]) if row[5] else None,
-                        'created_at': row[6],
-                        'last_run': row[7],
-                        'next_run': row[8],
-                        'status': row[9]
-                    }
+                try:
+                    # Get column names from the table
+                    cursor.execute("PRAGMA table_info(schedules)")
+                    columns = [col[1] for col in cursor.fetchall()]
+                    print(f"Available columns: {columns}")
+                    
+                    cursor.execute("""
+                        SELECT id, dataset_name, schedule_type, schedule_config, 
+                               email_config, format_config, created_at, last_run, 
+                               next_run, status 
+                        FROM schedules 
+                        WHERE status = 'active'
+                    """)
+                    rows = cursor.fetchall()
+                    
+                    for row in rows:
+                        schedule_id = row[0]  # id column
+                        schedules[schedule_id] = {
+                            'dataset_name': row[1],
+                            'schedule_type': row[2],
+                            'schedule_config': json.loads(row[3]),
+                            'email_config': json.loads(row[4]),
+                            'format_config': json.loads(row[5]) if row[5] else None,
+                            'created_at': row[6],
+                            'last_run': row[7],
+                            'next_run': row[8],
+                            'status': row[9]
+                        }
+                    
+                except sqlite3.OperationalError as e:
+                    if "no such table" in str(e) or "no such column" in str(e):
+                        print("Database schema issue detected, reinitializing database...")
+                        self._init_database()
+                        return {}
+                    else:
+                        raise
                 
             print(f"Loaded {len(schedules)} schedules from database")
             return schedules
             
-        except sqlite3.OperationalError as e:
-            if "no such table" in str(e):
-                print("Schedules table not found, initializing database...")
-                self._init_database()
-                return {}
-            else:
-                print(f"Error loading schedules: {str(e)}")
-                print("Attempting to recreate schedules table...")
-                try:
-                    self._init_database()
-                    return self.load_schedules()
-                except Exception as init_error:
-                    print(f"Failed to recreate schedules table: {str(init_error)}")
-                    return {}
         except Exception as e:
             print(f"Error loading schedules: {str(e)}")
             return {}
