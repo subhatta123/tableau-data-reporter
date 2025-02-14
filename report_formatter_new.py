@@ -232,18 +232,34 @@ class ReportFormatter:
         
         st.session_state.preview_buffer = preview_buffer
         
-        # Show preview iframe
-        base64_pdf = base64.b64encode(preview_buffer.getvalue()).decode('utf-8')
-        pdf_display = f'''
-            <iframe 
-                src="data:application/pdf;base64,{base64_pdf}" 
-                width="100%" 
-                height="800" 
-                type="application/pdf"
-                style="border: 1px solid #ccc; border-radius: 5px;"
-            ></iframe>
-        '''
-        st.markdown(pdf_display, unsafe_allow_html=True)
+        # Show download button for the preview
+        st.download_button(
+            label="⬇️ Download Preview",
+            data=preview_buffer.getvalue(),
+            file_name=f"report_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf"
+        )
+        
+        # Display PDF using Streamlit's native PDF display
+        try:
+            # Create two columns for better layout
+            col1, col2 = st.columns([1, 4])
+            
+            with col1:
+                st.write("Preview Options:")
+                zoom_level = st.slider("Zoom %", min_value=50, max_value=200, value=100, step=10)
+            
+            with col2:
+                # Display PDF with custom width based on zoom level
+                width = int(700 * (zoom_level/100))
+                st.write("PDF Preview:")
+                st.write(f'<iframe src="data:application/pdf;base64,{base64.b64encode(preview_buffer.getvalue()).decode()}" width="{width}" height="800"></iframe>', unsafe_allow_html=True)
+                
+                # Add a note about download option
+                st.info("💡 If the preview is not visible, please use the download button above to view the PDF.")
+        except Exception as e:
+            st.error(f"Error displaying preview: {str(e)}")
+            st.info("Please use the download button above to view the PDF.")
     
     def generate_report(self, df, include_row_count=True, include_totals=True, include_averages=True, report_title="Data Report"):
         """Generate the formatted report"""
