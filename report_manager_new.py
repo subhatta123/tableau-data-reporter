@@ -91,11 +91,11 @@ class ReportManager:
                 cursor.execute("""
                 CREATE TABLE IF NOT EXISTS schedule_runs (
                     run_id TEXT PRIMARY KEY,
-                    id TEXT NOT NULL,
+                    schedule_id TEXT NOT NULL,
                     run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT NOT NULL,
                     error_message TEXT,
-                    FOREIGN KEY (id) REFERENCES schedules (id)
+                    FOREIGN KEY (schedule_id) REFERENCES schedules (id)
                 )
                 """)
                 
@@ -874,16 +874,23 @@ _(Link expires in 24 hours)_"""
                 columns = [col[1] for col in cursor.fetchall()]
                 print(f"Available columns: {columns}")
                 
-                cursor.execute("SELECT * FROM schedules WHERE status = 'active'")
+                cursor.execute("""
+                    SELECT id, dataset_name, schedule_type, schedule_config, 
+                           email_config, format_config, created_at, last_run, 
+                           next_run, status 
+                    FROM schedules 
+                    WHERE status = 'active'
+                """)
                 rows = cursor.fetchall()
                 
                 for row in rows:
-                    schedule_id = row[0]  # id is the first column
+                    schedule_id = row[0]  # id column
                     schedules[schedule_id] = {
                         'dataset_name': row[1],
-                        'schedule_config': json.loads(row[3]),  # schedule_config is the 4th column
-                        'email_config': json.loads(row[4]),     # email_config is the 5th column
-                        'format_config': json.loads(row[5]) if row[5] else None,  # format_config is the 6th column
+                        'schedule_type': row[2],
+                        'schedule_config': json.loads(row[3]),
+                        'email_config': json.loads(row[4]),
+                        'format_config': json.loads(row[5]) if row[5] else None,
                         'created_at': row[6],
                         'last_run': row[7],
                         'next_run': row[8],
