@@ -4,10 +4,12 @@ import io
 from pathlib import Path
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 import base64
 import types
+import smtplib
+from dotenv import load_dotenv
 
 # Third-party imports
 import streamlit as st
@@ -30,6 +32,24 @@ from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+# Load environment variables
+load_dotenv()
+
+# Email settings from environment variables
+SMTP_SERVER = os.getenv('SMTP_SERVER')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SENDER_EMAIL = os.getenv('SENDER_EMAIL')
+SENDER_PASSWORD = os.getenv('SENDER_PASSWORD')
+
+if not all([SMTP_SERVER, SMTP_PORT, SENDER_EMAIL, SENDER_PASSWORD]):
+    st.error("""
+    ⚠️ Email settings are not properly configured. Please check your .env file and ensure the following variables are set:
+    - SMTP_SERVER
+    - SMTP_PORT
+    - SENDER_EMAIL
+    - SENDER_PASSWORD
+    """)
 
 def get_session():
     """Get the current session state"""
@@ -224,18 +244,18 @@ def show_normal_user_page():
         st.markdown("---")
         
         # Navigation buttons
-        if st.button("🔌 Connect to Tableau", key="normal_connect_tableau", use_container_width=True):
+        if st.button("🔌 Connect to Tableau", key="normal_user_connect_tableau_btn", use_container_width=True):
             st.session_state.show_tableau_page = True
             st.session_state.show_schedule_page = False
             st.rerun()
             
-        if st.button("📅 Schedule Reports", key="normal_schedule_reports", use_container_width=True):
+        if st.button("📅 Schedule Reports", key="normal_user_schedule_reports_btn", use_container_width=True):
             st.session_state.show_schedule_page = True
             st.session_state.show_tableau_page = False
             st.rerun()
         
         st.markdown("---")
-        if st.button("🚪 Logout", key="normal_user_logout", use_container_width=True):
+        if st.button("🚪 Logout", key="normal_user_logout_btn", use_container_width=True):
             clear_session()
             st.rerun()
     
@@ -262,26 +282,26 @@ def show_power_user_page():
         st.markdown("---")
         
         # Navigation buttons
-        if st.button("🔌 Connect to Tableau", key="power_connect_tableau", use_container_width=True):
+        if st.button("🔌 Connect to Tableau", key="power_user_connect_tableau_btn", use_container_width=True):
             st.session_state.show_tableau_page = True
             st.session_state.show_qa_page = False
             st.session_state.show_schedule_page = False
             st.rerun()
             
-        if st.button("💬 Chat with Data", key="power_chat_data", use_container_width=True):
+        if st.button("💬 Chat with Data", key="power_user_chat_data_btn", use_container_width=True):
             st.session_state.show_qa_page = True
             st.session_state.show_tableau_page = False
             st.session_state.show_schedule_page = False
             st.rerun()
             
-        if st.button("📅 Schedule Reports", key="power_schedule_reports", use_container_width=True):
+        if st.button("📅 Schedule Reports", key="power_user_schedule_reports_btn", use_container_width=True):
             st.session_state.show_schedule_page = True
             st.session_state.show_tableau_page = False
             st.session_state.show_qa_page = False
             st.rerun()
         
         st.markdown("---")
-        if st.button("🚪 Logout", key="power_user_logout", use_container_width=True):
+        if st.button("🚪 Logout", key="power_user_logout_btn", use_container_width=True):
             clear_session()
             st.rerun()
     
@@ -965,19 +985,19 @@ def show_saved_datasets(permission_type):
                 if permission_type == 'power':
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        if st.button("📅 Schedule", key=f"schedule_{dataset}"):
+                        if st.button("📅 Schedule", key=f"schedule_dataset_btn_{dataset}"):
                             st.session_state.current_dataset = dataset
-                            st.session_state.current_page = "schedule"
+                            st.session_state.show_schedule_page = True
                             st.rerun()
                     
                     with col2:
-                        if st.button("💬 Ask Questions", key=f"qa_{dataset}"):
+                        if st.button("💬 Ask Questions", key=f"qa_dataset_btn_{dataset}"):
                             st.session_state.current_dataset = dataset
-                            st.session_state.current_page = "qa"
+                            st.session_state.show_qa_page = True
                             st.rerun()
                     
                     with col3:
-                        if st.button("🗑️ Delete", key=f"delete_{dataset}", type="secondary"):
+                        if st.button("🗑️ Delete", key=f"delete_dataset_btn_{dataset}", type="secondary"):
                             if delete_dataset(dataset):
                                 st.success(f"Dataset {dataset} deleted successfully!")
                                 time.sleep(1)
@@ -985,13 +1005,13 @@ def show_saved_datasets(permission_type):
                 else:  # normal user
                     col1, col2 = st.columns(2)
                     with col1:
-                        if st.button("📅 Schedule", key=f"schedule_{dataset}"):
+                        if st.button("📅 Schedule", key=f"schedule_dataset_btn_{dataset}"):
                             st.session_state.current_dataset = dataset
-                            st.session_state.current_page = "schedule"
+                            st.session_state.show_schedule_page = True
                             st.rerun()
                     
                     with col2:
-                        if st.button("🗑️ Delete", key=f"delete_{dataset}", type="secondary"):
+                        if st.button("🗑️ Delete", key=f"delete_dataset_btn_{dataset}", type="secondary"):
                             if delete_dataset(dataset):
                                 st.success(f"Dataset {dataset} deleted successfully!")
                                 time.sleep(1)
@@ -1056,15 +1076,16 @@ class DatabaseManager:
                 cursor = conn.cursor()
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS schedules (
-                        schedule_id TEXT PRIMARY KEY,
-                        dataset_name TEXT,
-                        frequency TEXT,
-                        config TEXT,
-                        email_config TEXT,
-                        next_run TEXT,
-                        recipients TEXT,
-                        created_at TEXT,
-                        format_config TEXT
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dataset_name TEXT NOT NULL,
+                        schedule_type TEXT NOT NULL,
+                        schedule_config TEXT NOT NULL,
+                        email_config TEXT NOT NULL,
+                        format_config TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_run TIMESTAMP,
+                        next_run TIMESTAMP,
+                        status TEXT DEFAULT 'active'
                     )
                 """)
                 conn.commit()
@@ -1089,15 +1110,16 @@ class DatabaseManager:
                 # Create schedules table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS schedules (
-                        schedule_id TEXT PRIMARY KEY,
-                        dataset_name TEXT,
-                        frequency TEXT,
-                        config TEXT,
-                        email_config TEXT,
-                        next_run TEXT,
-                        recipients TEXT,
-                        created_at TEXT,
-                        format_config TEXT
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dataset_name TEXT NOT NULL,
+                        schedule_type TEXT NOT NULL,
+                        schedule_config TEXT NOT NULL,
+                        email_config TEXT NOT NULL,
+                        format_config TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_run TIMESTAMP,
+                        next_run TIMESTAMP,
+                        status TEXT DEFAULT 'active'
                     )
                 """)
                 
@@ -1165,102 +1187,118 @@ class DatabaseManager:
     def modify_schedule(self, schedule_id):
         """Handle schedule modification"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT dataset_name, frequency, config, email_config, recipients
-                    FROM schedules 
-                    WHERE schedule_id = ?
-                """, (schedule_id,))
-                result = cursor.fetchone()
-                
-                if not result:
-                    st.error("Schedule not found")
-                    if st.button("← Back to Schedules", use_container_width=True):
-                        st.session_state.current_page = "schedule"
+            # Get existing schedule details
+            report_manager = ReportManager()
+            schedules = report_manager.get_active_schedules()
+            if schedule_id not in schedules:
+                st.error("Schedule not found")
+                return
+            
+            schedule = schedules[schedule_id]
+            dataset_name = schedule['dataset_name']
+            current_config = schedule['schedule_config']
+            current_email_config = schedule['email_config']
+            
+            st.title("Modify Schedule")
+            st.write(f"Modifying schedule for dataset: {dataset_name}")
+            
+            # Schedule type selection
+            schedule_type = st.selectbox(
+                "Schedule Type",
+                ["one-time", "daily", "weekly", "monthly"],
+                index=["one-time", "daily", "weekly", "monthly"].index(current_config['type'])
+            )
+            
+            # Get schedule configuration based on type
+            new_schedule_config = self._handle_schedule_type_settings(schedule_type, current_config)
+            
+            # Email and WhatsApp recipients
+            st.markdown("### Recipients")
+            
+            # Email recipients
+            current_email_list = "\n".join(current_email_config.get('recipients', []))
+            email_list = st.text_area(
+                "Email Recipients (one per line)",
+                value=current_email_list,
+                help="Enter email addresses, one per line"
+            )
+            
+            # WhatsApp recipients
+            current_whatsapp_list = "\n".join(current_email_config.get('whatsapp_recipients', []))
+            whatsapp_list = st.text_area(
+                "WhatsApp Recipients (one per line)",
+                value=current_whatsapp_list,
+                help="Enter WhatsApp numbers with country code (e.g., +1234567890), one per line"
+            )
+            
+            # Message body
+            message_body = st.text_area(
+                "Message Body (optional)",
+                value=current_email_config.get('body', ''),
+                help="Enter an optional message to include with the report"
+            )
+            
+            # Update button
+            if st.button("Update Schedule", type="primary", use_container_width=True):
+                try:
+                    # Validate recipients
+                    if not email_list.strip() and not whatsapp_list.strip():
+                        st.error("Please enter at least one recipient (email or WhatsApp)")
+                        return
+                    
+                    # Prepare email configuration
+                    new_email_config = {
+                        'recipients': [e.strip() for e in email_list.split('\n') if e.strip()],
+                        'whatsapp_recipients': [w.strip() for w in whatsapp_list.split('\n') if w.strip()],
+                        'body': message_body,
+                        'smtp_server': SMTP_SERVER,
+                        'smtp_port': SMTP_PORT,
+                        'sender_email': SENDER_EMAIL,
+                        'sender_password': SENDER_PASSWORD
+                    }
+                    
+                    # Update schedule using the existing job ID
+                    updated_job_id = report_manager.schedule_report(
+                        dataset_name=dataset_name,
+                        email_config=new_email_config,
+                        schedule_config=new_schedule_config,
+                        existing_job_id=schedule_id
+                    )
+                    
+                    if updated_job_id:
+                        st.success("Schedule updated successfully! 🎉")
+                        time.sleep(1)
+                        st.session_state.show_modify_schedule = False
+                        st.session_state.modifying_schedule = None
                         st.rerun()
-                    return
-                
-                dataset_name, frequency, config, email_config, recipients = result
-                config = json.loads(config)
-                email_config = json.loads(email_config)
-                
-                # Display and handle schedule modification UI
-                self._display_schedule_form(
-                    conn, cursor, schedule_id, dataset_name, 
-                    frequency, config, email_config, recipients
-                )
-                
+                    else:
+                        st.error("Failed to update schedule")
+                        
+                except Exception as e:
+                    st.error(f"Failed to update schedule: {str(e)}")
+                    print(f"Schedule update error details: {str(e)}")
+            
+            # Back button
+            st.markdown("---")
+            if st.button("← Back to Schedules", use_container_width=True):
+                st.session_state.show_modify_schedule = False
+                st.session_state.modifying_schedule = None
+                st.rerun()
+            
         except Exception as e:
             st.error(f"Error loading schedule: {str(e)}")
             print(f"Error loading schedule details: {str(e)}")
-        
-        # Back button
-        st.markdown("---")
-        if st.button("← Back to Schedules", use_container_width=True):
-            st.session_state.current_page = "schedule"
-            st.rerun()
-    
-    def _display_schedule_form(self, conn, cursor, schedule_id, dataset_name, frequency, config, email_config, recipients):
-        """Display and handle the schedule modification form"""
-        st.subheader(f"📊 Dataset: {dataset_name}")
-        
-        # Recipients
-        st.write("👥 Recipients")
-        email_recipients = [r for r in email_config.get('recipients', [])]
-        whatsapp_recipients = [r for r in email_config.get('whatsapp_recipients', [])]
-        
-        email_list = st.text_area(
-            "Email Addresses",
-            value='\n'.join(email_recipients),
-            placeholder="Enter email addresses (one per line)",
-            help="These addresses will receive the scheduled reports"
-        )
-        
-        # WhatsApp recipients
-        st.write("📱 WhatsApp Recipients")
-        whatsapp_list = st.text_area(
-            "WhatsApp Numbers",
-            value='\n'.join(whatsapp_recipients),
-            placeholder="Enter WhatsApp numbers with country code (one per line)\nExample: +1234567890",
-            help="These numbers will receive WhatsApp notifications"
-        )
-        
-        # Message content
-        st.write("📝 Message Content")
-        message_body = st.text_area(
-            "Message Body",
-            value=email_config.get('body', ''),
-            placeholder="Enter the message to include with the report",
-            help="This message will be included in both email and WhatsApp notifications"
-        )
-        
-        # Schedule settings
-        st.write("🕒 Schedule Settings")
-        schedule_type = st.selectbox(
-            "Frequency",
-            ["One-time", "Daily", "Weekly", "Monthly"],
-            index=["one-time", "daily", "weekly", "monthly"].index(frequency.lower()),
-            help="How often to send the report"
-        ).lower()
-        
-        schedule_config = self._handle_schedule_type_settings(schedule_type, config)
-        
-        # Update schedule button
-        if st.button("Update Schedule", type="primary", use_container_width=True):
-            self._update_schedule(
-                conn, cursor, schedule_id, schedule_type, schedule_config,
-                email_list, whatsapp_list, message_body, email_config
-            )
-    
+
     def _handle_schedule_type_settings(self, schedule_type, config):
         """Handle settings for different schedule types"""
         col1, col2 = st.columns(2)
+        
         with col1:
             if schedule_type == "one-time":
                 date = st.date_input(
                     "Select Date",
-                    value=datetime.strptime(config['date'], "%Y-%m-%d").date() if 'date' in config else datetime.now().date()
+                    value=datetime.strptime(config.get('date', datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d").date(),
+                    min_value=datetime.now().date()
                 )
                 hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
                 minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
@@ -1270,6 +1308,7 @@ class DatabaseManager:
                     'hour': hour,
                     'minute': minute
                 }
+            
             elif schedule_type == "daily":
                 hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
                 minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
@@ -1278,31 +1317,63 @@ class DatabaseManager:
                     'hour': hour,
                     'minute': minute
                 }
+            
             elif schedule_type == "weekly":
-                current_day = config.get('day', 0)
-                day = st.selectbox(
-                    "Day of Week", 
-                    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-                    index=current_day
-                )
-                hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
-                minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
+                st.write("Select Days of Week")
+                days = []
+                day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                
+                # Create three columns for better layout
+                col1, col2, col3 = st.columns(3)
+                columns = [col1, col2, col3]
+                
+                # Distribute days across columns with unique keys
+                for i, day in enumerate(day_names):
+                    with columns[i // 3]:
+                        if st.checkbox(day, key=f"new_schedule_day_{day}_{i}"):
+                            days.append(i)
+                
+                # Show validation message if no days selected
+                if not days:
+                    st.error("⚠️ Please select at least one day")
+                
+                # Show selected days summary
+                if days:
+                    selected_days = [day_names[i] for i in days]
+                    st.success(f"✅ Selected days: {', '.join(selected_days)}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    hour = st.number_input("Hour (24-hour format)", min_value=0, max_value=23, value=8)
+                with col2:
+                    minute = st.number_input("Minute", min_value=0, max_value=59, value=0)
                 schedule_config = {
                     'type': 'weekly',
-                    'day': ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].index(day.lower()),
+                    'days': days,
                     'hour': hour,
                     'minute': minute
                 }
+            
             else:  # monthly
-                day = st.number_input("Day of Month", 1, 31, value=config.get('day', 1))
-                col1, col2 = st.columns(2)
-                with col1:
-                    hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
-                with col2:
-                    minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
+                day_option = st.radio(
+                    "Day Selection",
+                    ["Specific Day", "Last Day", "First Weekday", "Last Weekday"],
+                    index=["Specific Day", "Last Day", "First Weekday", "Last Weekday"].index(config.get('day_option', "Specific Day")),
+                    help="Choose how to select the day of the month"
+                )
+                
+                if day_option == "Specific Day":
+                    day = st.number_input("Day of Month", 1, 31, value=config.get('day', 1))
+                else:
+                    day = None
+                
+                hour = st.number_input("Hour (24-hour format)", 0, 23, value=config.get('hour', 8))
+                minute = st.number_input("Minute", 0, 59, value=config.get('minute', 0))
+                
                 schedule_config = {
                     'type': 'monthly',
                     'day': day,
+                    'day_option': day_option,
                     'hour': hour,
                     'minute': minute
                 }
@@ -1315,686 +1386,256 @@ class DatabaseManager:
     def _display_schedule_summary(self, schedule_type, config):
         """Display schedule summary"""
         st.write("Schedule Summary")
+        
+        time_str = f"{config['hour']:02d}:{config['minute']:02d}"
+        
         if schedule_type == "one-time":
-            st.info(f"""
-            Report will be sent once on:
-            {config['date']} at {config['hour']:02d}:{config['minute']:02d}
-            """)
+            st.info(f"Report will be sent once on: {config['date']} at {time_str}")
+        
         elif schedule_type == "daily":
-            st.info(f"""
-            Report will be sent daily at {config['hour']:02d}:{config['minute']:02d}
-            """)
+            st.info(f"Report will be sent daily at {time_str}")
+        
         elif schedule_type == "weekly":
             day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-            st.info(f"""
-            Report will be sent every {day_names[config['day']]} at {config['hour']:02d}:{config['minute']:02d}
-            """)
-        else:
-            st.info(f"""
-            Report will be sent on day {config['day']} of each month at {config['hour']:02d}:{config['minute']:02d}
-            """)
-    
-    def _update_schedule(self, conn, cursor, schedule_id, schedule_type, schedule_config,
-                        email_list, whatsapp_list, message_body, email_config):
-        """Update the schedule in the database"""
-        if not email_list.strip() and not whatsapp_list.strip():
-            st.error("Please enter at least one recipient (email or WhatsApp)")
-            return
+            days_str = ", ".join([day_names[d] for d in config['days']])
+            st.info(f"Report will be sent every {days_str} at {time_str}")
         
-        try:
-            # Update email configuration
-            email_config.update({
-                'recipients': [e.strip() for e in email_list.split('\n') if e.strip()],
-                'whatsapp_recipients': [w.strip() for w in whatsapp_list.split('\n') if w.strip()],
-                'body': message_body
-            })
+        else:  # monthly
+            if config['day_option'] == "Specific Day":
+                st.info(f"Report will be sent on day {config['day']} of each month at {time_str}")
+            else:
+                st.info(f"Report will be sent on the {config['day_option']} of each month at {time_str}")
+
+def display_pdf(pdf_path: str, title: str = "PDF Preview"):
+    """Display a PDF file with zoom controls"""
+    try:
+        # Read the PDF file
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+        
+        # Create two columns for better layout
+        col1, col2 = st.columns([1, 4])
+        
+        with col1:
+            st.write("Preview Options:")
+            zoom_level = st.slider("Zoom %", min_value=50, max_value=200, value=100, step=10)
+        
+        with col2:
+            # Display PDF with custom width based on zoom level
+            width = int(700 * (zoom_level/100))
+            st.write(title)
             
-            # Validate WhatsApp numbers if provided
-            if email_config['whatsapp_recipients']:
-                invalid_numbers = []
-                for number in email_config['whatsapp_recipients']:
-                    if not number.startswith('+') or not number[1:].isdigit():
-                        invalid_numbers.append(number)
-                if invalid_numbers:
-                    st.error(f"Invalid WhatsApp number(s): {', '.join(invalid_numbers)}. Numbers must start with + and contain only digits.")
-                    return
+            # Add download button
+            st.download_button(
+                "⬇️ Download PDF",
+                data=pdf_bytes,
+                file_name=os.path.basename(pdf_path),
+                mime="application/pdf",
+                use_container_width=True
+            )
             
-            # Update schedule in database
-            cursor.execute("""
-                UPDATE schedules 
-                SET frequency = ?, config = ?, email_config = ?, 
-                    recipients = ?, next_run = ?
-                WHERE schedule_id = ?
-            """, (
-                schedule_type,
-                json.dumps(schedule_config),
-                json.dumps(email_config),
-                ', '.join(email_config['recipients'] + email_config.get('whatsapp_recipients', [])),
-                datetime.now().isoformat(),
-                schedule_id
-            ))
-            conn.commit()
+            # Convert PDF to base64 and display
+            base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+            pdf_display = f'''
+                <embed 
+                    src="data:application/pdf;base64,{base64_pdf}" 
+                    type="application/pdf"
+                    width="{width}"
+                    height="800"
+                    style="border: 1px solid #ccc; border-radius: 5px;"
+                >
+            '''
+            st.markdown(pdf_display, unsafe_allow_html=True)
             
-            st.success("Schedule updated successfully! 🎉")
-            time.sleep(1)
-            st.session_state.current_page = "schedule"
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"Failed to update schedule: {str(e)}")
-            print(f"Schedule update error details: {str(e)}")
+            # Add a note about download option
+            st.info("💡 If the preview is not visible, please use the download button above to view the PDF.")
+    except Exception as e:
+        st.error(f"Error displaying PDF: {str(e)}")
+        st.info("Please use the download button to view the PDF.")
 
 def show_schedule_page():
     """Show schedule management interface"""
     st.title("📅 Schedule Management")
     
-    if st.session_state.get('show_modify_schedule'):
-        db_manager = DatabaseManager()
-        db_manager.modify_schedule(st.session_state.modifying_schedule)
-        return
+    # Initialize report manager
+    report_manager = ReportManager()
     
-    # Initialize state variables
-    if 'create_new_schedule' not in st.session_state:
-        st.session_state.create_new_schedule = False
-    if 'report_formatter' not in st.session_state:
-        st.session_state.report_formatter = ReportFormatter()
-    
-    # Create New Schedule button
-    if not st.session_state.create_new_schedule:
-        if st.button("➕ Create New Schedule", type="primary", use_container_width=True):
-            st.session_state.create_new_schedule = True
-            st.rerun()
-    else:
-        # Get formatter from session state
-        formatter = st.session_state.report_formatter
-        
-        # Get current dataset
-        if not st.session_state.get('current_dataset'):
-            st.error("Please select a dataset first")
-            if st.button("← Back to Datasets"):
-                st.session_state.create_new_schedule = False
-                st.rerun()
-            return
-        
-        dataset_name = st.session_state.current_dataset
-        df = load_dataset(dataset_name)
-        
-        if df is None:
-            st.error("Failed to load dataset")
-            return
-        
-        st.subheader(f"Schedule Report for: {dataset_name}")
-        
-        # Create tabs for different sections
-        format_tab, preview_tab, schedule_tab = st.tabs(["Report Format", "Preview", "Schedule Settings"])
-        
-        with format_tab:
-            formatter.show_formatting_interface(df)
-        
-        with preview_tab:
-            if df is not None:
-                st.dataframe(df.head(), use_container_width=True)
-                st.caption(f"Total rows: {len(df)}")
-                
-                # Show preview if available
-                if 'preview_buffer' in st.session_state:
-                    # Download button (outside form)
-                    st.download_button(
-                        "⬇️ Download Preview",
-                        data=st.session_state.preview_buffer.getvalue(),
-                        file_name=f"report_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    
-                    # Show preview in iframe
-                    base64_pdf = base64.b64encode(st.session_state.preview_buffer.getvalue()).decode('utf-8')
-                    pdf_display = f'''
-                        <iframe 
-                            src="data:application/pdf;base64,{base64_pdf}" 
-                            width="100%" 
-                            height="600" 
-                            type="application/pdf"
-                        ></iframe>
-                    '''
-                    st.markdown(pdf_display, unsafe_allow_html=True)
-        
-        # Schedule settings in a form
-        with schedule_tab:
-            with st.form("schedule_settings_form"):
-                st.subheader("📅 Schedule Settings")
-                
-                # Schedule type
-                schedule_type = st.selectbox(
-                    "Frequency",
-                    ["One-time", "Daily", "Weekly", "Monthly"],
-                    help="How often to send the report"
-                )
-                
-                # Schedule details based on type
-                if schedule_type == "One-time":
-                    date = st.date_input("Select Date")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        hour = st.number_input("Hour (24-hour format)", min_value=0, max_value=23, value=8)
-                    with col2:
-                        minute = st.number_input("Minute", min_value=0, max_value=59, value=0)
-                    schedule_config = {
-                        'type': 'one-time',
-                        'date': date.strftime("%Y-%m-%d"),
-                        'hour': hour,
-                        'minute': minute
-                    }
-                elif schedule_type == "Daily":
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        hour = st.number_input("Hour (24-hour format)", min_value=0, max_value=23, value=8)
-                    with col2:
-                        minute = st.number_input("Minute", min_value=0, max_value=59, value=0)
-                    schedule_config = {
-                        'type': 'daily',
-                        'hour': hour,
-                        'minute': minute
-                    }
-                elif schedule_type == "Weekly":
-                    day = st.selectbox("Day of Week", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        hour = st.number_input("Hour (24-hour format)", min_value=0, max_value=23, value=8)
-                    with col2:
-                        minute = st.number_input("Minute", min_value=0, max_value=59, value=0)
-                    schedule_config = {
-                        'type': 'weekly',
-                        'day': ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].index(day.lower()),
-                        'hour': hour,
-                        'minute': minute
-                    }
-                else:  # Monthly
-                    day = st.number_input("Day of Month", min_value=1, max_value=31, value=1)
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        hour = st.number_input("Hour (24-hour format)", 0, 23, value=8)
-                    with col2:
-                        minute = st.number_input("Minute", 0, 59, value=0)
-                    schedule_config = {
-                        'type': 'monthly',
-                        'day': day,
-                        'hour': hour,
-                        'minute': minute
-                    }
-                
-                # Recipients
-                st.subheader("📧 Recipients")
-                email_list = st.text_area(
-                    "Email Addresses",
-                    placeholder="Enter email addresses (one per line)",
-                    help="These addresses will receive the scheduled reports"
-                )
-                
-                # WhatsApp recipients
-                whatsapp_list = st.text_area(
-                    "WhatsApp Numbers",
-                    placeholder="Enter WhatsApp numbers with country code (one per line)\nExample: +1234567890",
-                    help="These numbers will receive WhatsApp notifications"
-                )
-                
-                # Message
-                message = st.text_area(
-                    "Message",
-                    placeholder="Enter a message to include with the report",
-                    help="This message will be included in both email and WhatsApp notifications"
-                )
-                
-                # Get formatting settings from the formatter
-                if 'preview_buffer' in st.session_state:
-                    format_config = {
-                        'page_size': formatter.page_size,
-                        'orientation': formatter.orientation,
-                        'margins': formatter.margins,
-                        'title_style': formatter.title_style,
-                        'table_style': formatter.table_style,
-                        'chart_size': formatter.chart_size,
-                        'report_content': st.session_state.get('report_content', {})
-                    }
-                else:
-                    format_config = None
-                
-                # Submit button
-                submitted = st.form_submit_button("Create Schedule", type="primary", use_container_width=True)
-                
-                if submitted:
-                    try:
-                        # Validate inputs
-                        if not email_list.strip() and not whatsapp_list.strip():
-                            st.error("Please enter at least one recipient (email or WhatsApp)")
-                            return
-                        
-                        if not format_config:
-                            st.error("Please preview the report format first before creating the schedule")
-                            return
-                        
-                        # Prepare email configuration
-                        email_config = {
-                            'recipients': [e.strip() for e in email_list.split('\n') if e.strip()],
-                            'whatsapp_recipients': [w.strip() for w in whatsapp_list.split('\n') if w.strip()],
-                            'body': message,
-                            'format': 'PDF',
-                            'smtp_server': os.getenv('SMTP_SERVER'),
-                            'smtp_port': int(os.getenv('SMTP_PORT', 587)),
-                            'sender_email': os.getenv('SENDER_EMAIL'),
-                            'sender_password': os.getenv('SENDER_PASSWORD'),
-                            'base_url': os.getenv('BASE_URL', 'https://your-domain.com')  # Add your actual domain here
-                        }
-                        
-                        # Create schedule
-                        report_manager = ReportManager()
-                        job_id = report_manager.schedule_report(
-                            dataset_name, 
-                            email_config, 
-                            schedule_config,
-                            format_config=format_config
-                        )
-                        
-                        if job_id:
-                            st.success("Schedule created successfully! 🎉")
-                            st.session_state.create_new_schedule = False
-                            st.rerun()
-                        else:
-                            # Check if schedule exists
-                            existing_schedules = report_manager.get_active_schedules()
-                            schedule_exists = False
-                            for existing_job_id, schedule in existing_schedules.items():
-                                if (schedule['dataset_name'] == dataset_name and 
-                                    schedule['schedule_config']['type'] == schedule_config['type']):
-                                    if schedule_config['type'] == 'one-time':
-                                        if (schedule['schedule_config']['date'] == schedule_config['date'] and
-                                            schedule['schedule_config']['hour'] == schedule_config['hour'] and
-                                            schedule['schedule_config']['minute'] == schedule_config['minute']):
-                                            schedule_exists = True
-                                            break
-                                    else:
-                                        if (schedule['schedule_config'].get('hour') == schedule_config.get('hour') and
-                                            schedule['schedule_config'].get('minute') == schedule_config.get('minute') and
-                                            schedule['schedule_config'].get('day') == schedule_config.get('day')):
-                                            schedule_exists = True
-                                            break
-                            
-                            if schedule_exists:
-                                st.error(f"A schedule already exists for {dataset_name} at the specified time. Please choose a different time or modify the existing schedule.")
-                            else:
-                                st.error("Failed to create schedule. Please check your settings and try again.")
-                        
-                    except Exception as e:
-                        st.error(f"Failed to create schedule: {str(e)}")
-                        print(f"Schedule creation error details: {str(e)}")
-        
-        # Cancel button (outside form)
-        if st.button("❌ Cancel"):
-            st.session_state.create_new_schedule = False
-            st.rerun()
+    # Add Create New Schedule button at the top
+    if st.button("➕ Create New Schedule", type="primary", use_container_width=True):
+        st.session_state.show_create_schedule = True
+        st.rerun()
     
     st.markdown("---")
     
-    # Show active schedules
-    st.subheader("Active Schedules")
-    try:
-        with sqlite3.connect('data/tableau_data.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT schedule_id, dataset_name, frequency, config, email_config, next_run
-                FROM schedules
-                ORDER BY created_at DESC
-            """)
-            schedules = cursor.fetchall()
-            
-            if schedules:
-                for schedule in schedules:
-                    schedule_id, dataset_name, frequency, config, email_config, next_run = schedule
-                    with st.expander(f"📊 {dataset_name} - {frequency.title()}", expanded=True):
-                        config = json.loads(config)
-                        email_config = json.loads(email_config)
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write("**Schedule Details:**")
-                            st.write(f"- Frequency: {frequency.title()}")
-                            st.write(f"- Next Run: {next_run}")
-                            st.write(f"- Recipients: {', '.join(email_config.get('recipients', []))}")
-                            if email_config.get('whatsapp_recipients'):
-                                st.write(f"- WhatsApp: {', '.join(email_config['whatsapp_recipients'])}")
-                        
-                        with col2:
-                            if st.button("✏️ Modify", key=f"modify_{schedule_id}"):
-                                st.session_state.show_modify_schedule = True
-                                st.session_state.modifying_schedule = schedule_id
-                                st.rerun()
-                            
-                            if st.button("🗑️ Delete", key=f"delete_{schedule_id}"):
-                                cursor.execute("DELETE FROM schedules WHERE schedule_id = ?", (schedule_id,))
-                                conn.commit()
-                                st.success("Schedule deleted successfully!")
-                                time.sleep(1)
-                                st.rerun()
-            else:
-                st.info("No active schedules found.")
+    # Get saved schedules
+    schedules = report_manager.get_active_schedules()
+    
+    if not schedules:
+        st.info("No schedules found. Click 'Create New Schedule' to get started.")
+    else:
+        st.write(f"Found {len(schedules)} schedule(s)")
+        
+        # Display each schedule
+        for schedule_id, schedule in schedules.items():
+            with st.expander(f"Schedule: {schedule.get('dataset_name', 'Unknown Dataset')}"):
+                st.write(f"Type: {schedule.get('schedule_config', {}).get('type', 'Unknown')}")
+                st.write(f"Configuration: {schedule.get('schedule_config', {})}")
                 
-    except Exception as e:
-        st.error(f"Error loading schedules: {str(e)}")
-        print(f"Error details: {str(e)}")
+                # Add Modify and Delete buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✏️ Modify", key=f"modify_{schedule_id}", use_container_width=True):
+                        st.session_state.modifying_schedule = schedule_id
+                        st.session_state.show_modify_schedule = True
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"delete_{schedule_id}", type="secondary", use_container_width=True):
+                        if report_manager.remove_schedule(schedule_id):
+                            st.success(f"Schedule deleted successfully!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete schedule")
+                
+                # Display report if available
+                if 'last_report' in schedule:
+                    report_path = schedule['last_report']
+                    if os.path.exists(report_path):
+                        display_pdf(report_path, title="Last Generated Report")
+                
+                # Show preview if available
+                if 'preview_buffer' in st.session_state:
+                    # Save preview to a temporary file
+                    preview_path = os.path.join('static/reports', f'preview_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
+                    with open(preview_path, 'wb') as f:
+                        f.write(st.session_state.preview_buffer.getvalue())
+                    display_pdf(preview_path, title="Report Preview")
+                    # Clean up the temporary file
+                    try:
+                        os.remove(preview_path)
+                    except:
+                        pass
+    
+    # Handle create new schedule
+    if st.session_state.get('show_create_schedule'):
+        st.markdown("---")
+        st.subheader("Create New Schedule")
+        
+        # Dataset selection
+        datasets = get_saved_datasets()
+        selected_dataset = st.selectbox("Select Dataset", datasets)
+        
+        if selected_dataset:
+            # Recipients
+            st.write("👥 Recipients")
+            email_list = st.text_area(
+                "Email Addresses",
+                placeholder="Enter email addresses (one per line)",
+                help="These addresses will receive the scheduled reports"
+            )
+            
+            # WhatsApp recipients
+            st.write("📱 WhatsApp Recipients")
+            whatsapp_list = st.text_area(
+                "WhatsApp Numbers",
+                placeholder="Enter WhatsApp numbers with country code (one per line)\nExample: +1234567890",
+                help="These numbers will receive WhatsApp notifications"
+            )
+            
+            # Message content
+            st.write("📝 Message Content")
+            message_body = st.text_area(
+                "Message Body",
+                placeholder="Enter the message to include with the report",
+                help="This message will be included in both email and WhatsApp notifications"
+            )
+            
+            # Schedule settings
+            st.write("🕒 Schedule Settings")
+            schedule_type = st.selectbox(
+                "Frequency",
+                ["One-time", "Daily", "Weekly", "Monthly"],
+                help="How often to send the report"
+            ).lower()
+            
+            # Get schedule configuration based on type
+            db_manager = DatabaseManager()
+            schedule_config = db_manager._handle_schedule_type_settings(schedule_type, {})
+            
+            # Create schedule button
+            if st.button("Create Schedule", type="primary", use_container_width=True):
+                try:
+                    # Validate recipients
+                    if not email_list.strip() and not whatsapp_list.strip():
+                        st.error("Please enter at least one recipient (email or WhatsApp)")
+                        return
+                    
+                    # Prepare email configuration
+                    email_config = {
+                        'recipients': [e.strip() for e in email_list.split('\n') if e.strip()],
+                        'whatsapp_recipients': [w.strip() for w in whatsapp_list.split('\n') if w.strip()],
+                        'body': message_body,
+                        'smtp_server': SMTP_SERVER,
+                        'smtp_port': SMTP_PORT,
+                        'sender_email': SENDER_EMAIL,
+                        'sender_password': SENDER_PASSWORD
+                    }
+                    
+                    # Create schedule
+                    job_id = report_manager.schedule_report(
+                        dataset_name=selected_dataset,
+                        email_config=email_config,
+                        schedule_config=schedule_config
+                    )
+                    
+                    if job_id:
+                        st.success("Schedule created successfully! 🎉")
+                        time.sleep(1)
+                        st.session_state.show_create_schedule = False
+                        st.rerun()
+                    else:
+                        st.error("Failed to create schedule")
+                        
+                except Exception as e:
+                    st.error(f"Failed to create schedule: {str(e)}")
+            
+            # Cancel button
+            if st.button("Cancel", use_container_width=True):
+                st.session_state.show_create_schedule = False
+                st.rerun()
+    
+    # Handle modify schedule
+    if st.session_state.get('show_modify_schedule') and st.session_state.get('modifying_schedule'):
+        db_manager = DatabaseManager()
+        db_manager.modify_schedule(st.session_state.modifying_schedule)
 
 def show_qa_page():
     """Show Q&A interface for dataset analysis"""
     st.title("💬 Chat with Data")
-    
-    if not st.session_state.get('current_dataset'):
-        st.info("Please select a dataset from the home page to start asking questions.")
-        return
-    
-    dataset_name = st.session_state.current_dataset
-    df = load_dataset(dataset_name)
-    
-    if df is None:
-        st.error("Failed to load dataset.")
-        return
-    
-    try:
-        # Show dataset preview
-        st.subheader(f"📊 Dataset: {dataset_name}")
-        st.dataframe(df.head(), use_container_width=True)
-        st.caption(f"Total rows: {len(df)}")
-        
-        # Dataset summary
-        st.subheader("📈 Dataset Summary")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Columns:**")
-            for col in df.columns:
-                st.write(f"- {col}")
-        
-        with col2:
-            st.write("**Quick Stats:**")
-            numeric_cols = df.select_dtypes(include=['number']).columns
-            for col in numeric_cols:
-                st.write(f"**{col}:**")
-                st.write(f"- Mean: {df[col].mean():.2f}")
-                st.write(f"- Min: {df[col].min():.2f}")
-                st.write(f"- Max: {df[col].max():.2f}")
-        
-        # Q&A Interface
-        st.markdown("---")
-        st.subheader("🤔 Ask Questions")
-        
-        # Example questions based on actual columns
-        examples = []
-        if len(numeric_cols) > 0:
-            examples.extend([
-                f"What is the total sum of {numeric_cols[0]}?",
-                f"Show me the average {numeric_cols[0]}",
-                f"What are the top 5 values in {numeric_cols[0]}?"
-            ])
-        
-        date_cols = df.select_dtypes(include=['datetime64']).columns
-        if len(date_cols) > 0 and len(numeric_cols) > 0:
-            examples.append(f"Show me the trend of {numeric_cols[0]} over time")
-        
-        categorical_cols = df.select_dtypes(include=['object']).columns
-        if len(categorical_cols) > 0:
-            examples.append(f"What are the unique values in {categorical_cols[0]}?")
-        
-        st.write("Try asking questions like:")
-        for example in examples:
-            st.write(f"- {example}")
-        
-        # Question input
-        user_question = st.text_area(
-            "Ask a question about your data",
-            placeholder="Example: What is the total sales? Show me the trend over time.",
-            key="qa_input"
-        )
-        
-        if user_question:
-            st.write("**Your Question:**", user_question)
-            
-            # Process basic questions
-            try:
-                # Look for keywords in the question
-                question_lower = user_question.lower()
-                
-                if 'total' in question_lower or 'sum' in question_lower:
-                    # Find numeric columns mentioned in the question
-                    for col in numeric_cols:
-                        if col.lower() in question_lower:
-                            total = df[col].sum()
-                            st.success(f"The total {col} is: {total:,.2f}")
-                            
-                            # Show visualization
-                            fig = go.Figure(data=[
-                                go.Bar(name=col, x=[col], y=[total])
-                            ])
-                            fig.update_layout(title=f"Total {col}")
-                            st.plotly_chart(fig)
-                
-                elif 'average' in question_lower or 'mean' in question_lower:
-                    # Find numeric columns mentioned in the question
-                    for col in numeric_cols:
-                        if col.lower() in question_lower:
-                            mean = df[col].mean()
-                            st.success(f"The average {col} is: {mean:,.2f}")
-                            
-                            # Show visualization
-                            fig = go.Figure(data=[
-                                go.Box(name=col, y=df[col])
-                            ])
-                            fig.update_layout(title=f"Distribution of {col}")
-                            st.plotly_chart(fig)
-                
-                elif 'top' in question_lower:
-                    # Extract number (default to 5 if not found)
-                    import re
-                    numbers = re.findall(r'\d+', question_lower)
-                    n = int(numbers[0]) if numbers else 5
-                    
-                    # Find columns mentioned in the question
-                    for col in df.columns:
-                        if col.lower() in question_lower:
-                            top_values = df[col].value_counts().head(n)
-                            st.success(f"Top {n} values in {col}:")
-                            
-                            # Show results in a table
-                            st.write(pd.DataFrame({
-                                col: top_values.index,
-                                'Count': top_values.values
-                            }))
-                            
-                            # Show visualization
-                            fig = go.Figure(data=[
-                                go.Bar(x=top_values.index, y=top_values.values)
-                            ])
-                            fig.update_layout(title=f"Top {n} values in {col}")
-                            st.plotly_chart(fig)
-                
-                elif 'trend' in question_lower or 'over time' in question_lower:
-                    # Look for date columns
-                    if len(date_cols) > 0:
-                        date_col = date_cols[0]  # Use the first date column
-                        
-                        # Find numeric columns mentioned in the question
-                        for col in numeric_cols:
-                            if col.lower() in question_lower:
-                                # Group by date and calculate mean
-                                trend_data = df.groupby(date_col)[col].mean()
-                                
-                                st.success(f"Showing trend of {col} over time")
-                                
-                                # Show visualization
-                                fig = go.Figure(data=[
-                                    go.Scatter(x=trend_data.index, y=trend_data.values, mode='lines+markers')
-                                ])
-                                fig.update_layout(title=f"Trend of {col} over time")
-                                st.plotly_chart(fig)
-                    else:
-                        st.warning("No date/time columns found in the dataset")
-                
-                elif 'unique' in question_lower or 'distinct' in question_lower:
-                    # Find columns mentioned in the question
-                    for col in df.columns:
-                        if col.lower() in question_lower:
-                            unique_values = df[col].nunique()
-                            st.success(f"There are {unique_values:,} unique values in {col}")
-                            
-                            # Show top 10 most common values
-                            top_values = df[col].value_counts().head(10)
-                            st.write("Top 10 most common values:")
-                            
-                            # Show visualization
-                            fig = go.Figure(data=[
-                                go.Bar(x=top_values.index, y=top_values.values)
-                            ])
-                            fig.update_layout(title=f"Most common values in {col}")
-                            st.plotly_chart(fig)
-                
-                else:
-                    st.info("I'm not sure how to answer that question. Try asking about totals, averages, top values, or trends.")
-                    st.write("You can also try one of the example questions above.")
-                    
-            except Exception as e:
-                st.error(f"Error processing question: {str(e)}")
-                st.info("Try rephrasing your question or use one of the example questions above.")
-    
-    except Exception as e:
-        st.error(f"Error in Q&A interface: {str(e)}")
-        st.info("Please try refreshing the page or selecting the dataset again.")
-
-def modify_schedule_page():
-    """Show schedule modification interface"""
-    if not st.session_state.get('modifying_schedule'):
-        st.error("No schedule selected for modification")
-        return
-    
-    db_manager = DatabaseManager()
-    db_manager.modify_schedule(st.session_state.modifying_schedule)
-
-def show_help():
-    """Show help and documentation"""
-    st.title("ℹ️ Help & Documentation")
-    
-    st.header("Getting Started")
-    st.write("""
-    1. Connect to Tableau using your server credentials
-    2. Select workbooks and views to download
-    3. Schedule reports or analyze data using the Q&A feature
-    """)
-
-    st.header("Features")
-    st.write("""
-    - 🔌 **Tableau Connection**: Connect to your Tableau server
-    - 📊 **Data Download**: Download data from selected views
-    - 📅 **Scheduling**: Set up automated report delivery
-    - 💬 **Q&A**: Ask questions about your data
-    - 📧 **Notifications**: Receive reports via email or WhatsApp
-    """)
-
-def handle_report_request():
-    """Handle shared report link requests"""
-    report_id = st.query_params.get('report')
-    try:
-        with sqlite3.connect('data/tableau_data.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM reports WHERE report_id = ?", (report_id,))
-            report = cursor.fetchone()
-            if report:
-                st.title("📊 Shared Report")
-                st.write(f"Report ID: {report_id}")
-                # Display report content
-                df = pd.read_sql_query(f"SELECT * FROM '{report[1]}'", conn)
-                st.dataframe(df)
-            else:
-                st.error("Report not found or has expired")
-    except Exception as e:
-        st.error(f"Error loading report: {str(e)}")
+    # ... rest of the file content ...
 
 def main():
-    """Main function to run the Streamlit app"""
-    st.set_page_config(page_title="Tableau Data Reporter", layout="wide")
+    """Main function to run the Streamlit application"""
+    st.set_page_config(
+        page_title="Tableau Data Reporter",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    # Load environment variables from .env file
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    # Initialize session state if not already done
+    # Initialize session state if needed
     init_session_state()
     
-    # Check for shared report link
-    if st.query_params.get('report'):
-        handle_report_request()
-        return
-    
-    # Show login page if not authenticated
+    # Show appropriate page based on authentication status
     if not st.session_state.get('authenticated', False):
         show_login_page()
-        return
-    
-    # Show navigation bar if user is authenticated
-    with st.sidebar:
-        st.title("Navigation")
-        
-        # Show user info
-        if st.session_state.get('user'):
-            st.write(f"**User:** {st.session_state.user['username']}")
-            st.write(f"**Role:** {st.session_state.user['role']}")
-            st.write(f"**Organization:** {st.session_state.user['organization_name']}")
-            st.markdown("---")
-        
-        # Navigation buttons
-        if st.session_state.user['role'] != 'superadmin':
-            if st.button("🏠 Home", key="nav_home", use_container_width=True):
-                st.session_state.current_page = "home"
-                st.rerun()
-            
-            if st.button("🔌 Connect to Tableau", key="nav_tableau", use_container_width=True):
-                st.session_state.current_page = "tableau"
-                st.rerun()
-            
-            if st.button("💾 Saved Data", key="nav_saved_data", use_container_width=True):
-                st.session_state.current_page = "saved_data"
-                st.rerun()
-            
-            if st.button("📅 Schedule Reports", key="nav_schedule", use_container_width=True):
-                st.session_state.current_page = "schedule"
-                st.rerun()
-            
-            if st.button("❓ Q&A", key="nav_qa", use_container_width=True):
-                st.session_state.current_page = "qa"
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Help and Logout buttons
-        if st.button("ℹ️ Help", key="nav_help", use_container_width=True):
-            show_help()
-        
-        if st.button("🚪 Logout", key="nav_logout", use_container_width=True):
-            clear_session()
-            st.rerun()
-    
-    # Show appropriate page based on user role and current page
-    if st.session_state.user['role'] == 'superadmin':
-        show_user_dashboard()
     else:
-        current_page = st.session_state.get('current_page', 'home')
-        if current_page == "home":
-            show_saved_datasets(st.session_state.user['permission_type'])
-        elif current_page == "tableau":
-            show_tableau_page()
-        elif current_page == "saved_data":
-            show_saved_datasets(st.session_state.user['permission_type'])
-        elif current_page == "schedule":
-            show_schedule_page()
-        elif current_page == "qa":
-            show_qa_page()
-        elif current_page == "modify_schedule":
-            modify_schedule_page()
+        # Show different pages based on user type
+        if st.session_state.get('user_type') == 'power_user':
+            show_power_user_page()
+        else:
+            show_normal_user_page()
 
 if __name__ == "__main__":
     main() 

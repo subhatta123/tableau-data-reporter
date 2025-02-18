@@ -20,6 +20,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Environment variables
+.env
+.env.*
+
 # Virtual Environment
 venv/
 env/
@@ -31,26 +35,22 @@ ENV/
 *.swp
 *.swo
 
+# Database
+*.db
+data/*.db
+data/schedules.json
+
+# Generated files
+static/reports/
+*.pdf
+
 # Logs
 *.log
-
-# Local data
-data/reports/
-data/*.db
-data/*.sqlite3
-static/reports/
-
-# Environment variables
-.env
+logs/
 
 # Streamlit
 .streamlit/
 
-# Temporary files
-*.tmp
-*.temp
-*.bak
-
-# System files
+# System Files
 .DS_Store
 Thumbs.db 
